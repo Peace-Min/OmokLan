@@ -1,4 +1,5 @@
 using System.Text;
+using System.Globalization;
 using System.Text.RegularExpressions;
 using OmokLan.Engine.Core;
 
@@ -6,10 +7,13 @@ namespace OmokLan.Engine.Play;
 
 /// <summary>
 /// CLI 터미널 환경을 위한 오목판 그리드 및 텍스트 렌더링 엔진.
-/// Windows 콘솔(cmd/PowerShell/conhost) 폰트 환경에서 어떠한 왜곡도 없이 100% 칼정렬 보장.
+/// 터미널의 표시 셀 수에 맞춰 텍스트를 구성합니다.
 /// </summary>
 public static class CliRenderer
 {
+    public const int BoardWidth = 38;
+    public const int FrameHeight = 23;
+    public const int MinimumFrameWidth = 42;
     public static readonly string[] ColLabels = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O"];
 
     /// <summary>문자가 콘솔에서 전각(2칸)을 차지하는지 판별합니다.</summary>
@@ -27,6 +31,10 @@ public static class CliRenderer
         // CJK 기호 및 전각 문자
         if (c >= 0x3000 && c <= 0x303f) return true;
         if (c >= 0xff01 && c <= 0xff60) return true;
+        if (c >= 0xffe0 && c <= 0xffe6) return true;
+        if (c >= 0x3040 && c <= 0x30ff) return true;
+        if (c >= 0x31f0 && c <= 0x31ff) return true;
+        if (c >= 0xf900 && c <= 0xfaff) return true;
 
         return false;
     }
@@ -36,7 +44,7 @@ public static class CliRenderer
     {
         if (string.IsNullOrEmpty(s)) return 0;
         int width = 0;
-        foreach (char c in s)
+        foreach (char c in SanitizeDisplay(s))
         {
             width += IsWideChar(c) ? 2 : 1;
         }
@@ -46,30 +54,85 @@ public static class CliRenderer
     /// <summary>문자열을 목표 표시 너비(targetWidth)에 맞게 자르거나 공백을 채워 정렬합니다.</summary>
     public static string PadOrTrimDisplay(string s, int targetWidth)
     {
-        if (s == null) s = "";
-        // 이모지 등 서로게이트 페어 제거하여 콘솔 정렬 보호
-        s = Regex.Replace(s, @"\p{Cs}", "");
+        if (targetWidth <= 0) return "";
+        s = SanitizeDisplay(s);
+        bool truncated = GetDisplayWidth(s) > targetWidth;
+        int contentWidth = truncated && targetWidth >= 2 ? targetWidth - 2 : targetWidth;
 
         int currentWidth = 0;
         var sb = new StringBuilder();
         foreach (char c in s)
         {
             int charWidth = IsWideChar(c) ? 2 : 1;
-            if (currentWidth + charWidth > targetWidth - 2)
-            {
-                sb.Append("..");
-                currentWidth += 2;
-                break;
-            }
+            if (currentWidth + charWidth > contentWidth) break;
             sb.Append(c);
             currentWidth += charWidth;
         }
 
+        if (truncated && targetWidth >= 2)
+        {
+            sb.Append("..");
+            currentWidth += 2;
+        }
         if (currentWidth < targetWidth)
         {
             sb.Append(new string(' ', targetWidth - currentWidth));
         }
         return sb.ToString();
+    }
+
+    // 로그나 닉네임의 개행/탭/ESC가 커서를 이동시키지 않도록 합니다.
+    public static string SanitizeDisplay(string? text)
+    {
+        var result = new StringBuilder();
+        foreach (char c in text ?? "")
+        {
+            if (char.IsSurrogate(c)) continue;
+            var category = char.GetUnicodeCategory(c);
+            if (category is UnicodeCategory.NonSpacingMark or UnicodeCategory.EnclosingMark or UnicodeCategory.Format) continue;
+            // 원/별/그리스 문자 등은 동아시아 콘솔과 폰트에 따라 1칸 또는 2칸입니다.
+            result.Append(char.IsControl(c) ? ' ' : c > 0x7e && !IsWideChar(c) ? '?' : c);
+        }
+        return result.ToString();
+    }
+
+    public static string InputTail(string input, int width)
+    {
+        string text = SanitizeDisplay(input);
+        int remaining = GetDisplayWidth(text);
+        int start = 0;
+        while (start < text.Length && remaining > Math.Max(0, width))
+            remaining -= IsWideChar(text[start++]) ? 2 : 1;
+        return text[start..];
+    }
+
+    public static IReadOnlyList<string> WrapDisplay(string text, int width)
+    {
+        // 한글 한 글자(2칸)도 온전히 표시할 수 있어야 합니다.
+        if (width < 2) throw new ArgumentOutOfRangeException(nameof(width));
+        var lines = new List<string>();
+        var line = new StringBuilder();
+        int cells = 0;
+        foreach (char c in SanitizeDisplay(text))
+        {
+            int charWidth = IsWideChar(c) ? 2 : 1;
+            if (cells + charWidth > width)
+            {
+                lines.Add(line.ToString());
+                line.Clear();
+                cells = 0;
+            }
+            line.Append(c);
+            cells += charWidth;
+        }
+        if (line.Length > 0 || lines.Count == 0) lines.Add(line.ToString());
+        return lines;
+    }
+
+    public static string FormatBoardPanel(int y, Stone[,] grid, (int X, int Y)? lastMove, string log, int width)
+    {
+        if (width < MinimumFrameWidth) throw new ArgumentOutOfRangeException(nameof(width));
+        return FormatBoardRow(y, grid, lastMove) + " " + PadOrTrimDisplay(log, width - BoardWidth - 2) + "|";
     }
 
     /// <summary>다양한 입력 형식(단순 좌표, git 커밋, kubectl 등)에서 바둑판 좌표(X, Y)를 추출합니다.</summary>
@@ -101,24 +164,24 @@ public static class CliRenderer
 
     /// <summary>
     /// 오목판 1개 행(Row)을 터미널 텍스트로 빌드합니다.
-    /// 모든 셀을 [기호 1개 + 공백 1개]의 2칸 튜플로 100% 동일하게 구성하여 폰트 차이에 무관하게 정렬을 유지합니다.
-    /// 너비: │ 01 (5칸) + 15셀*2칸(30칸) + 2칸 공백 + │(1칸) = 정확히 38칸.
+    /// ASCII 기호로 동아시아 콘솔에서 폭이 달라지는 원/테두리 문자를 피합니다.
+    /// 너비: 행 번호 5칸 + 15셀*2칸 + 여백/테두리 3칸 = 38칸.
     /// </summary>
     public static string FormatBoardRow(int y, Stone[,] grid, (int X, int Y)? lastMove)
     {
         var sb = new StringBuilder();
-        sb.Append($"│ {(y + 1),2} "); // 5칸
+        sb.Append($"| {(y + 1),2} "); // 5칸
 
         for (int x = 0; x < OmokBoard.Size; x++)
         {
             var st = grid[x, y];
             if (st == Stone.Black)
             {
-                sb.Append("● "); // 기호 + 공백 = 2칸
+                sb.Append("X ");
             }
             else if (st == Stone.White)
             {
-                sb.Append("○ "); // 기호 + 공백 = 2칸
+                sb.Append("O ");
             }
             else
             {
@@ -127,7 +190,7 @@ public static class CliRenderer
             }
         }
 
-        sb.Append("  │"); // 3칸
+        sb.Append("  |"); // 3칸
         return sb.ToString();
     }
 }

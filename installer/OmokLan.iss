@@ -1,10 +1,10 @@
-; =====================================================================
+﻿; =====================================================================
 ; LAN 오목 (OmokLan) - Inno Setup 배포 스크립트
 ; 사내망/폐쇄망 환경 맞춤형 단일 실행 설치 패키지 (Single-File Installer)
 ; =====================================================================
 
 #define MyAppName "LAN 오목"
-#define MyAppVersion "1.1.0"
+#define MyAppVersion "1.1.1"
 #define MyAppPublisher "LAN Omok"
 #define MyAppURL "https://github.com/Peace-Min/OmokLan"
 #define MyAppExeName "OmokLan.exe"
@@ -39,7 +39,7 @@ DisableProgramGroupPage=yes
 
 ; 설치 패키지 출력 설정 (초고압축 단일 exe 생성)
 OutputDir={#OutputDir}
-OutputBaseFilename=OmokLan_Setup_v1.1
+OutputBaseFilename=OmokLan_Setup_v{#MyAppVersion}
 Compression=lzma2/ultra64
 SolidCompression=yes
 ArchitecturesInstallIn64BitMode=x64compatible

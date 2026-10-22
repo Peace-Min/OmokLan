@@ -1,7 +1,6 @@
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
-using System.Text.RegularExpressions;
 using System.Windows;
 using OmokLan.Engine.Core;
 using OmokLan.Engine.Play;
@@ -46,7 +45,9 @@ public sealed class TerminalMatchSession : IDisposable
     private bool _isDisposed;
     private bool _isPanicMode;
     private bool _isInitialDrawn;
+    private (int Left, int Top, int Width, int Height) _lastViewport;
     private readonly List<string> _recentLogs = new();
+    private int _logScrollOffset;
     private readonly StringBuilder _inputBuffer = new();
 
     public TerminalMatchSession(OmokMatch match, Action onSessionEnded)
@@ -73,7 +74,7 @@ public sealed class TerminalMatchSession : IDisposable
 
         try
         {
-            // 버퍼를 충분히 확보(120x35)하여 줄바꿈이나 창 바닥 도달로 인한 강제 스크롤 원천 차단
+            // 초기 크기만 제안합니다. 렌더링은 실제 뷰포트 크기를 따릅니다.
             if (Console.BufferWidth < 120) Console.BufferWidth = 120;
             if (Console.BufferHeight < 35) Console.BufferHeight = 35;
             if (Console.WindowWidth < 102) Console.WindowWidth = 102;
@@ -103,7 +104,8 @@ public sealed class TerminalMatchSession : IDisposable
         AddLog("INFO", $"Peer node connected -> [{_match.OpponentNick}]. Waiting for sync token...");
 
         // 4. 입력 처리 백그라운드 루프 시작 (논블로킹 Key 루프)
-        Task.Run(() => RunCliInputLoopAsync(_sessionCts.Token));
+        var token = _sessionCts.Token;
+        _ = Task.Run(() => RunCliInputLoopAsync(token));
 
         // 게임 개시
         _match.Begin();
@@ -173,7 +175,8 @@ public sealed class TerminalMatchSession : IDisposable
             string time = DateTime.Now.ToString("HH:mm:ss.fff");
             string entry = $"[{time}] [{level}] {message}";
             _recentLogs.Add(entry);
-            // 15줄 화면에 맞춰 최대 14줄까지 충분히 보관
+            _logScrollOffset = 0;
+            // 줄바꿈 전 메시지를 보관하여 창 크기 변경 시 다시 배치합니다.
             if (_recentLogs.Count > 14)
             {
                 _recentLogs.RemoveAt(0);
@@ -181,14 +184,12 @@ public sealed class TerminalMatchSession : IDisposable
         }
     }
 
-    private static int GetDisplayWidth(string s) => CliRenderer.GetDisplayWidth(s);
-    private static string PadOrTrimDisplay(string s, int targetWidth) => CliRenderer.PadOrTrimDisplay(s, targetWidth);
     public static bool TryParseMove(string input, out int x, out int y) => CliRenderer.TryParseMove(input, out x, out y);
 
-    /// <summary>
-    /// 화면을 깜빡임 없이 제자리(In-place)에서 부드럽게 갱신합니다.
-    /// 오목판 셀을 정확히 2칸(Width 2)으로 고정하여 어떤 위치에 착수해도 사각형이 깨지지 않습니다.
-    /// </summary>
+    private static (int Left, int Top, int Width, int Height) GetViewport() =>
+        (Console.WindowLeft, Console.WindowTop, Console.WindowWidth, Console.WindowHeight);
+
+    /// <summary>각 행을 뷰포트의 절대 좌표에 덮어써 자동 줄바꿈과 스크롤을 방지합니다.</summary>
     private void Redraw()
     {
         lock (_consoleLock)
@@ -198,352 +199,335 @@ public sealed class TerminalMatchSession : IDisposable
             try
             {
                 Console.CursorVisible = false;
-
-                // 최초 1회만 화면 초기화, 이후에는 제자리 덮어쓰기로 깜빡임 박멸
-                if (!_isInitialDrawn)
+                var viewport = GetViewport();
+                // 마지막 열은 자동 줄바꿈 방지, 프롬프트 뒤 한 칸은 커서 자리입니다.
+                int width = Math.Min(98, viewport.Width - 1);
+                if (width < 1 || viewport.Height < 2) return;
+                if (!_isInitialDrawn || viewport != _lastViewport)
                 {
                     Console.Clear();
+                    viewport = GetViewport();
+                    _lastViewport = viewport;
                     _isInitialDrawn = true;
+                }
+
+                void WriteAt(int x, int y, string text, int cells, ConsoleColor color)
+                {
+                    Console.SetCursorPosition(viewport.Left + x, viewport.Top + y);
+                    Console.ForegroundColor = color;
+                    Console.Write(CliRenderer.PadOrTrimDisplay(text, cells));
+                }
+
+                bool fits = width >= CliRenderer.MinimumFrameWidth && viewport.Height >= CliRenderer.FrameHeight;
+                int promptRow = fits ? 22 : viewport.Height - 1;
+                if (fits)
+                {
+                    var snap = _match.Snapshot();
+                    string border = "+" + new string('-', CliRenderer.BoardWidth - 2) + "+" + new string('-', width - CliRenderer.BoardWidth - 1) + "+";
+                    WriteAt(0, 0, border, width, ConsoleColor.Cyan);
+                    string myColor = _match.MyColor == Stone.Black ? "X P1 (Master)" : (_match.MyColor == Stone.White ? "O P2 (Worker)" : "Syncing...");
+                    string turn = _match.IsMyTurn ? $"* Local Lock ({snap.TurnSecondsRemaining,2}s)" : $"Peer Lock ({snap.TurnSecondsRemaining,2}s)";
+                    string header = $"[K8S MESH] Peer: {_match.OpponentNick} | Tag: {myColor} | Status: {turn}";
+                    WriteAt(0, 1, "|" + CliRenderer.PadOrTrimDisplay(header, width - 2) + "|", width, ConsoleColor.White);
+                    WriteAt(0, 2, border, width, ConsoleColor.Cyan);
+                    string labels = "|    " + string.Join(" ", CliRenderer.ColLabels) + "   |";
+                    int logWidth = width - CliRenderer.BoardWidth - 2;
+                    WriteAt(0, 3, labels + " " + CliRenderer.PadOrTrimDisplay("LIVE LOG STREAM & SYSTEM STATUS", logWidth) + "|", width, ConsoleColor.DarkGreen);
+                    WriteAt(0, 4, "|" + new string(' ', 36) + "|" + new string(' ', width - 39) + "|", width, ConsoleColor.DarkGray);
+
+                    var logLines = _recentLogs.SelectMany(entry =>
+                        CliRenderer.WrapDisplay(entry, logWidth).Select(line => (Text: line, Entry: entry))).ToList();
+                    _logScrollOffset = Math.Clamp(_logScrollOffset, 0, Math.Max(0, logLines.Count - OmokBoard.Size));
+                    int firstLogLine = logLines.Count - OmokBoard.Size - _logScrollOffset;
+
+                    for (int y = 0; y < OmokBoard.Size; y++)
+                    {
+                        int logIndex = firstLogLine + y;
+                        string log = logIndex >= 0 ? logLines[logIndex].Text : "";
+                        string entry = logIndex >= 0 ? logLines[logIndex].Entry : "";
+                        string row = CliRenderer.FormatBoardPanel(y, snap.Grid, snap.LastMove, log, width);
+                        WriteAt(0, y + 5, row, width, ConsoleColor.DarkGray);
+                        for (int x = 0; x < OmokBoard.Size; x++)
+                        {
+                            var stone = snap.Grid[x, y];
+                            bool last = snap.LastMove == (x, y);
+                            ConsoleColor color = stone == Stone.None ? ConsoleColor.DarkCyan :
+                                last ? ConsoleColor.Yellow : stone == Stone.Black ? ConsoleColor.Cyan : ConsoleColor.Red;
+                            WriteAt(5 + x * 2, y + 5, row.Substring(5 + x * 2, 1), 1, color);
+                        }
+                        ConsoleColor logColor = entry.Contains("[INFO]") ? ConsoleColor.DarkGreen :
+                            entry.Contains("[CHAT]") ? ConsoleColor.Magenta :
+                            entry.Contains("[WARN]") ? ConsoleColor.Yellow :
+                            entry.Contains("[RESULT]") ? ConsoleColor.Green : ConsoleColor.Gray;
+                        WriteAt(39, y + 5, log, logWidth, logColor);
+                    }
+                    WriteAt(0, 20, border, width, ConsoleColor.Cyan);
+                    string logPosition = _logScrollOffset == 0 ? "최신" : $"이전 {_logScrollOffset}줄";
+                    WriteAt(0, 21, $" PgUp/PgDn 로그({logPosition}) | H8 | chat <내용> | boss | gui | resign | X=흑 O=백", width, ConsoleColor.DarkGray);
                 }
                 else
                 {
-                    try
-                    {
-                        if (Console.WindowTop > 0) Console.SetWindowPosition(0, 0);
-                    }
-                    catch { }
-                    Console.SetCursorPosition(0, 0);
+                    WriteAt(0, 0, "Resize terminal to at least 43 columns x 23 rows.", width, ConsoleColor.Yellow);
                 }
 
-                var snap = _match.Snapshot();
-
-                // 1. 상단 터미널 헤더 (총 98칸 너비 칼일치)
-                Console.ForegroundColor = ConsoleColor.Cyan;
-                Console.WriteLine("┌────────────────────────────────────┬───────────────────────────────────────────────────────────┐");
-                Console.Write("│ ");
-                Console.ForegroundColor = ConsoleColor.White;
-
-                string safeNick = _match.OpponentNick.Replace("🤖", "").Trim();
-                string myColorStr = _match.MyColor == Stone.Black ? "● P1 (Master)" : (_match.MyColor == Stone.White ? "○ P2 (Worker)" : "Syncing...");
-                string turnStr = _match.IsMyTurn ? $"★ Local Lock ({snap.TurnSecondsRemaining,2}s)" : $"Peer Lock ({snap.TurnSecondsRemaining,2}s)";
-                string headerInfo = $"[K8S MESH] Peer: {safeNick}  |  Tag: {myColorStr}  |  Status: {turnStr}";
-                Console.Write(PadOrTrimDisplay(headerInfo, 94));
-                Console.ForegroundColor = ConsoleColor.Cyan;
-                Console.WriteLine(" │");
-                Console.WriteLine("├────────────────────────────────────┼───────────────────────────────────────────────────────────┤");
-
-                // 2. 15x15 오목판 매트릭스 렌더링 (좌측 38칸 + 우측 60칸 = 98칸)
-                Console.ForegroundColor = ConsoleColor.DarkGray;
-                Console.Write("│     A B C D E F G H I J K L M N O  │ ");
-                Console.ForegroundColor = ConsoleColor.DarkGreen;
-                Console.WriteLine(PadOrTrimDisplay("LIVE LOG STREAM & SYSTEM STATUS (RECENT CHAT & PACKETS)", 57) + " │");
-                Console.ForegroundColor = ConsoleColor.DarkGray;
-                Console.WriteLine("│                                    │                                                           │");
-
-                for (int y = 0; y < OmokBoard.Size; y++)
-                {
-                    Console.ForegroundColor = ConsoleColor.DarkGray;
-                    Console.Write($"│ {(y + 1),2} "); // 5칸
-
-                    for (int x = 0; x < OmokBoard.Size; x++)
-                    {
-                        var st = snap.Grid[x, y];
-                        bool isLast = snap.LastMove.HasValue && snap.LastMove.Value.X == x && snap.LastMove.Value.Y == y;
-
-                        // 🔒 핵심 해결: 모든 셀을 [문자 1개 + 공백 1개 = 2칸]으로 100% 동일하게 구성!
-                        // 이렇게 하면 어떤 콘솔 폰트에서도 F4든 어디든 너비가 1mm도 밀리지 않고 완벽하게 정렬됨!
-                        if (st == Stone.Black)
-                        {
-                            Console.ForegroundColor = isLast ? ConsoleColor.Yellow : ConsoleColor.Cyan;
-                            Console.Write("● "); // 문자 + 공백
-                        }
-                        else if (st == Stone.White)
-                        {
-                            Console.ForegroundColor = isLast ? ConsoleColor.Yellow : ConsoleColor.Red;
-                            Console.Write("○ "); // 문자 + 공백
-                        }
-                        else
-                        {
-                            // 화점 및 빈칸 (가운데점 대신 또렷이 보이는 마침표 . 사용)
-                            bool isStar = (x == 3 || x == 7 || x == 11) && (y == 3 || y == 7 || y == 11);
-                            if (isStar)
-                            {
-                                Console.ForegroundColor = ConsoleColor.DarkCyan;
-                                Console.Write("+ ");
-                            }
-                            else
-                            {
-                                Console.ForegroundColor = ConsoleColor.DarkGray;
-                                Console.Write(". ");
-                            }
-                        }
-                    }
-
-                    // 우측 대화/로그 스트림 (57칸 너비 제공)
-                    Console.ForegroundColor = ConsoleColor.DarkGray;
-                    Console.Write("  │ ");
-
-                    int logIdx = y - (OmokBoard.Size - _recentLogs.Count);
-                    if (logIdx >= 0 && logIdx < _recentLogs.Count)
-                    {
-                        string logLine = _recentLogs[logIdx];
-                        if (logLine.Contains("[INFO]")) Console.ForegroundColor = ConsoleColor.DarkGreen;
-                        else if (logLine.Contains("[CHAT]")) Console.ForegroundColor = ConsoleColor.Magenta;
-                        else if (logLine.Contains("[WARN]")) Console.ForegroundColor = ConsoleColor.Yellow;
-                        else if (logLine.Contains("[RESULT]")) Console.ForegroundColor = ConsoleColor.Green;
-                        else Console.ForegroundColor = ConsoleColor.Gray;
-
-                        // 57칸 너비에 맞춰서 출력
-                        string formattedLine = PadOrTrimDisplay(logLine, 57);
-                        Console.Write(formattedLine);
-                    }
-                    else
-                    {
-                        Console.Write(new string(' ', 57));
-                    }
-
-                    Console.ForegroundColor = ConsoleColor.DarkGray;
-                    Console.WriteLine(" │");
-                }
-
-                Console.ForegroundColor = ConsoleColor.Cyan;
-                Console.WriteLine("└────────────────────────────────────┴───────────────────────────────────────────────────────────┘");
-                Console.ResetColor();
-
-                // 3. 안내 및 명령어 힌트
-                Console.ForegroundColor = ConsoleColor.DarkGray;
-                Console.WriteLine(" [명령어 가이드] 좌표(H8) | git commit -m 'H8' | chat <내용> | boss(긴급위장) | gui | resign");
-                Console.ResetColor();
-
-                // 4. 하단 프롬프트 및 현재 입력 버퍼 재출력 (입력칸 완벽 보존)
-                Console.ForegroundColor = ConsoleColor.Green;
-                string promptPrefix = " dev@prod-k8s:~$ ";
-                Console.Write(promptPrefix);
-                Console.ResetColor();
-
-                string currentBuffer = _inputBuffer.ToString();
-                Console.Write(currentBuffer);
-
-                // 이전 입력 잔상 지우기 위한 여백 채움
-                int padSpaces = Math.Max(0, 40 - currentBuffer.Length);
-                Console.Write(new string(' ', padSpaces));
-
-                // 커서를 입력 버퍼 끝으로 재배치
-                int targetCol = promptPrefix.Length + currentBuffer.Length;
-                int targetRow = Console.CursorTop;
-                Console.SetCursorPosition(targetCol, targetRow);
-                Console.CursorVisible = true;
+                string prefix = CliRenderer.PadOrTrimDisplay(" dev@prod-k8s:~$ ", Math.Min(16, width - 1));
+                string input = CliRenderer.InputTail(_inputBuffer.ToString(), width - prefix.Length - 1);
+                WriteAt(0, promptRow, prefix + input, width, ConsoleColor.Green);
+                Console.SetCursorPosition(viewport.Left + prefix.Length + CliRenderer.GetDisplayWidth(input), viewport.Top + promptRow);
             }
-            catch
+            catch (IOException)
             {
-                // 콘솔 조작 실패 시 무시
+                _isInitialDrawn = false;
+            }
+            catch (ArgumentOutOfRangeException)
+            {
+                // 창 크기가 프레임 출력 도중 바뀌었으면 다음 입력/타이머에서 다시 그립니다.
+                _isInitialDrawn = false;
+            }
+            finally
+            {
+                if (!_isDisposed)
+                {
+                    try { Console.ResetColor(); Console.CursorVisible = true; }
+                    catch (IOException) { }
+                }
             }
         }
     }
 
     /// <summary>사용자 키보드 입력 수신 루프 (ReadKey 기반 대화형 논블로킹 입력)</summary>
-        private async Task RunCliInputLoopAsync(CancellationToken ct)
+    private async Task RunCliInputLoopAsync(CancellationToken ct)
+    {
+        while (!ct.IsCancellationRequested && !_isDisposed)
         {
-            while (!ct.IsCancellationRequested && !_isDisposed)
-            {
-                if (!Console.KeyAvailable)
-                {
-                    await Task.Delay(25, ct);
-                    continue;
-                }
-
-                ConsoleKeyInfo keyInfo = Console.ReadKey(intercept: true);
-
-                if (_isPanicMode)
-                {
-                    // 보스 패닉 화면에서 아무 키나 누르면 오목 화면으로 복구
-                    _isPanicMode = false;
-                    _isInitialDrawn = false;
-                    Redraw();
-                    continue;
-                }
-
-                if (keyInfo.Key == ConsoleKey.Escape)
-                {
-                    // ESC 키 누르면 즉각 보스 패닉 화면
-                    TriggerPanicScreen();
-                    continue;
-                }
-
-                if (keyInfo.Key == ConsoleKey.Enter)
-                {
-                    string command;
-                    lock (_consoleLock)
-                    {
-                        command = _inputBuffer.ToString().Trim();
-                        _inputBuffer.Clear();
-                    }
-
-                    if (!string.IsNullOrEmpty(command))
-                    {
-                        await ProcessCommandAsync(command);
-                    }
-                    else
-                    {
-                        // 게임이 끝난 상태에서 엔터를 치면 GUI 로비로 복귀
-                        if (_match.Snapshot().IsOver)
-                        {
-                            RestoreGui();
-                            return;
-                        }
-                    }
-
-                    Redraw();
-                    continue;
-                }
-
-                if (keyInfo.Key == ConsoleKey.Backspace)
-                {
-                    lock (_consoleLock)
-                    {
-                        if (_inputBuffer.Length > 0)
-                        {
-                            _inputBuffer.Remove(_inputBuffer.Length - 1, 1);
-                        }
-                    }
-                    Redraw();
-                    continue;
-                }
-
-                // 일반 텍스트 문자 입력
-                if (!char.IsControl(keyInfo.KeyChar))
-                {
-                    lock (_consoleLock)
-                    {
-                        _inputBuffer.Append(keyInfo.KeyChar);
-                    }
-                    Redraw();
-                }
-            }
-        }
-
-        /// <summary>명령어 처리</summary>
-        private async Task ProcessCommandAsync(string input)
-        {
-            string lower = input.ToLowerInvariant();
-
-            // 1. 긴급 보스 키 (boss 또는 panic)
-            if (lower == "boss" || lower == "panic")
-            {
-                TriggerPanicScreen();
-                return;
-            }
-
-            // 2. GUI 복귀 명령어
-            if (lower == "gui" || lower == "window")
-            {
-                RestoreGui();
-                return;
-            }
-
-            // 3. 기권 명령어
-            if (lower == "resign" || lower == "quit" || lower == "exit")
-            {
-                AddLog("WARN", "기권을 선언합니다...");
-                await _match.ResignAsync();
-                return;
-            }
-
-            // 4. 일시정지 (AI 모드)
-            if (lower == "pause" || lower == "resume")
-            {
-                if (_match.IsPaused)
-                {
-                    _match.Resume();
-                    AddLog("INFO", "AI 대결이 재개되었습니다.");
-                }
-                else
-                {
-                    _match.Pause();
-                    AddLog("INFO", "AI 대결이 일시정지되었습니다.");
-                }
-                return;
-            }
-
-            // 5. 채팅 명령어: chat 안녕하세요
-            if (lower.StartsWith("chat "))
-            {
-                string msg = input.Substring(5).Trim();
-                if (!string.IsNullOrEmpty(msg))
-                {
-                    await _match.SendChatAsync(msg);
-                    AddLog("CHAT", $"<나> \"{msg}\"");
-                }
-                return;
-            }
-
-            // 6. 착수 명령어 파싱 (H8, h8, h 8, git commit -m "H8", kubectl apply -f h8.yaml 등)
-            if (TryParseMove(input, out int x, out int y))
-            {
-                if (!_match.IsMyTurn)
-                {
-                    AddLog("WARN", "내 차례가 아닙니다. 상대방의 착수를 기다리십시오.");
-                    return;
-                }
-
-                bool ok = await _match.PlaceAsync(x, y);
-                if (ok)
-                {
-                    AddLog("MOVE", $"착수 완료: {ColLabels[x]}{y + 1} ({input})");
-                }
-                else
-                {
-                    AddLog("WARN", $"착수 실패: {ColLabels[x]}{y + 1} 위치에 둘 수 없습니다.");
-                }
-                return;
-            }
-
-            // 알 수 없는 명령어
-            AddLog("WARN", $"알 수 없는 명령: '{input}'. 예: 'H8', 'chat 안녕', 'boss'");
-        }
-
-        /// <summary>긴급 보스 키: 가짜 MSBuild / Docker 빌드 화면을 띄웁니다.</summary>
-        private void TriggerPanicScreen()
-        {
+            bool keyAvailable;
             lock (_consoleLock)
             {
-                _isPanicMode = true;
-                Console.Clear();
-                Console.ForegroundColor = ConsoleColor.White;
-                Console.WriteLine("MSBuild version 17.12.0 for .NET (x64)");
-                Console.WriteLine("Building project 'C:\\Projects\\EnterpriseBackend\\Service.csproj' (default targets):");
-                Console.ForegroundColor = ConsoleColor.Yellow;
-                Console.WriteLine("(CoreCompile target) ->");
-                Console.ForegroundColor = ConsoleColor.Gray;
-                Console.WriteLine("  Compiling 1,842 source files...");
-                Console.WriteLine("  Optimizing assemblies... [============================>    ] 74%");
-                Console.WriteLine("  17:05:12.102 [CSC] Compiling OmokLan.Core.dll (Tier-1 PGO enabled)");
-                Console.WriteLine("  17:05:13.491 [DOCKER] Step 8/14 : COPY --from=build /app/publish .");
-                Console.WriteLine("  17:05:15.882 [KUBE] Syncing deployment/omok-core to cluster prod-k8s...");
-                Console.WriteLine("  17:05:16.012 [INFO] Health probe 200 OK on port 8080. Pod 1 of 6 ready.");
-                Console.WriteLine("  17:05:17.451 [INFO] Database migration applied successfully: V20261022__add_index.sql");
-                Console.WriteLine();
-                Console.ForegroundColor = ConsoleColor.DarkGray;
-                Console.WriteLine(" [System Busy] 진행 중입니다... (ESC 또는 아무 키를 누르면 원래 콘솔로 복귀)");
+                if (_isDisposed) return;
+                keyAvailable = Console.KeyAvailable;
+            }
+            if (!keyAvailable)
+            {
+                try { await Task.Delay(25, ct); }
+                catch (OperationCanceledException) { return; }
+                lock (_consoleLock)
+                {
+                    if (_isDisposed) return;
+                    if (!_isPanicMode && (!_isInitialDrawn || GetViewport() != _lastViewport)) Redraw();
+                }
+                continue;
+            }
+
+            ConsoleKeyInfo keyInfo;
+            lock (_consoleLock)
+            {
+                if (_isDisposed) return;
+                if (!Console.KeyAvailable) continue;
+                keyInfo = Console.ReadKey(intercept: true);
+            }
+
+            if (_isPanicMode)
+            {
+                // 보스 패닉 화면에서 아무 키나 누르면 오목 화면으로 복구
+                _isPanicMode = false;
+                _isInitialDrawn = false;
+                Redraw();
+                continue;
+            }
+
+            if (keyInfo.Key == ConsoleKey.Escape)
+            {
+                // ESC 키 누르면 즉각 보스 패닉 화면
+                TriggerPanicScreen();
+                continue;
+            }
+
+            if (keyInfo.Key is ConsoleKey.PageUp or ConsoleKey.PageDown)
+            {
+                lock (_consoleLock)
+                {
+                    _logScrollOffset = Math.Max(0, _logScrollOffset + (keyInfo.Key == ConsoleKey.PageUp ? OmokBoard.Size : -OmokBoard.Size));
+                }
+                Redraw();
+                continue;
+            }
+
+            if (keyInfo.Key == ConsoleKey.Enter)
+            {
+                string command;
+                lock (_consoleLock)
+                {
+                    command = _inputBuffer.ToString().Trim();
+                    _inputBuffer.Clear();
+                }
+
+                if (!string.IsNullOrEmpty(command))
+                {
+                    await ProcessCommandAsync(command);
+                }
+                else
+                {
+                    // 게임이 끝난 상태에서 엔터를 치면 GUI 로비로 복귀
+                    if (_match.Snapshot().IsOver)
+                    {
+                        RestoreGui();
+                        return;
+                    }
+                }
+
+                Redraw();
+                continue;
+            }
+
+            if (keyInfo.Key == ConsoleKey.Backspace)
+            {
+                lock (_consoleLock)
+                {
+                    if (_inputBuffer.Length > 0)
+                    {
+                        _inputBuffer.Remove(_inputBuffer.Length - 1, 1);
+                    }
+                }
+                Redraw();
+                continue;
+            }
+
+            // 일반 텍스트 문자 입력
+            if (!char.IsControl(keyInfo.KeyChar))
+            {
+                lock (_consoleLock)
+                {
+                    _inputBuffer.Append(keyInfo.KeyChar);
+                }
+                Redraw();
             }
         }
+    }
 
-        /// <summary>콘솔 세션을 종료하고 원래 WPF 메인 화면으로 복원합니다.</summary>
-        private void RestoreGui()
+    /// <summary>명령어 처리</summary>
+    private async Task ProcessCommandAsync(string input)
+    {
+        string lower = input.ToLowerInvariant();
+
+        // 1. 긴급 보스 키 (boss 또는 panic)
+        if (lower == "boss" || lower == "panic")
         {
-            Dispose();
-            Ui.Post(() =>
-            {
-                if (Application.Current?.MainWindow is { } mainWin)
-                {
-                    mainWin.WindowState = WindowState.Normal;
-                    mainWin.Activate();
-                }
-                _onSessionEnded();
-            });
+            TriggerPanicScreen();
+            return;
         }
 
-        public void Dispose()
+        // 2. GUI 복귀 명령어
+        if (lower == "gui" || lower == "window")
+        {
+            RestoreGui();
+            return;
+        }
+
+        // 3. 기권 명령어
+        if (lower == "resign" || lower == "quit" || lower == "exit")
+        {
+            AddLog("WARN", "기권을 선언합니다...");
+            await _match.ResignAsync();
+            return;
+        }
+
+        // 4. 일시정지 (AI 모드)
+        if (lower == "pause" || lower == "resume")
+        {
+            if (_match.IsPaused)
+            {
+                _match.Resume();
+                AddLog("INFO", "AI 대결이 재개되었습니다.");
+            }
+            else
+            {
+                _match.Pause();
+                AddLog("INFO", "AI 대결이 일시정지되었습니다.");
+            }
+            return;
+        }
+
+        // 5. 채팅 명령어: chat 안녕하세요
+        if (lower.StartsWith("chat "))
+        {
+            string msg = input.Substring(5).Trim();
+            if (!string.IsNullOrEmpty(msg))
+            {
+                await _match.SendChatAsync(msg);
+                AddLog("CHAT", $"<나> \"{msg}\"");
+            }
+            return;
+        }
+
+        // 6. 착수 명령어 파싱 (H8, h8, h 8, git commit -m "H8", kubectl apply -f h8.yaml 등)
+        if (TryParseMove(input, out int x, out int y))
+        {
+            if (!_match.IsMyTurn)
+            {
+                AddLog("WARN", "내 차례가 아닙니다. 상대방의 착수를 기다리십시오.");
+                return;
+            }
+
+            bool ok = await _match.PlaceAsync(x, y);
+            if (ok)
+            {
+                AddLog("MOVE", $"착수 완료: {ColLabels[x]}{y + 1} ({input})");
+            }
+            else
+            {
+                AddLog("WARN", $"착수 실패: {ColLabels[x]}{y + 1} 위치에 둘 수 없습니다.");
+            }
+            return;
+        }
+
+        // 알 수 없는 명령어
+        AddLog("WARN", $"알 수 없는 명령: '{input}'. 예: 'H8', 'chat 안녕', 'boss'");
+    }
+
+    /// <summary>긴급 보스 키: 가짜 MSBuild / Docker 빌드 화면을 띄웁니다.</summary>
+    private void TriggerPanicScreen()
+    {
+        lock (_consoleLock)
+        {
+            _isPanicMode = true;
+            Console.Clear();
+            Console.ForegroundColor = ConsoleColor.White;
+            Console.WriteLine("MSBuild version 17.12.0 for .NET (x64)");
+            Console.WriteLine("Building project 'C:\\Projects\\EnterpriseBackend\\Service.csproj' (default targets):");
+            Console.ForegroundColor = ConsoleColor.Yellow;
+            Console.WriteLine("(CoreCompile target) ->");
+            Console.ForegroundColor = ConsoleColor.Gray;
+            Console.WriteLine("  Compiling 1,842 source files...");
+            Console.WriteLine("  Optimizing assemblies... [============================>    ] 74%");
+            Console.WriteLine("  17:05:12.102 [CSC] Compiling OmokLan.Core.dll (Tier-1 PGO enabled)");
+            Console.WriteLine("  17:05:13.491 [DOCKER] Step 8/14 : COPY --from=build /app/publish .");
+            Console.WriteLine("  17:05:15.882 [KUBE] Syncing deployment/omok-core to cluster prod-k8s...");
+            Console.WriteLine("  17:05:16.012 [INFO] Health probe 200 OK on port 8080. Pod 1 of 6 ready.");
+            Console.WriteLine("  17:05:17.451 [INFO] Database migration applied successfully: V20261022__add_index.sql");
+            Console.WriteLine();
+            Console.ForegroundColor = ConsoleColor.DarkGray;
+            Console.WriteLine(" [System Busy] 진행 중입니다... (ESC 또는 아무 키를 누르면 원래 콘솔로 복귀)");
+        }
+    }
+
+    /// <summary>콘솔 세션을 종료하고 원래 WPF 메인 화면으로 복원합니다.</summary>
+    private void RestoreGui()
+    {
+        Dispose();
+        Ui.Post(() =>
+        {
+            if (Application.Current?.MainWindow is { } mainWin)
+            {
+                mainWin.WindowState = WindowState.Normal;
+                mainWin.Activate();
+            }
+            _onSessionEnded();
+        });
+    }
+
+    public void Dispose()
+    {
+        lock (_consoleLock)
         {
             if (_isDisposed) return;
             _isDisposed = true;
@@ -559,3 +543,4 @@ public sealed class TerminalMatchSession : IDisposable
             FreeConsole();
         }
     }
+}
