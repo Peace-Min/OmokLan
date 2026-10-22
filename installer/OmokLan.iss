@@ -43,6 +43,8 @@ OutputBaseFilename=OmokLan_Setup_v1.1
 Compression=lzma2/ultra64
 SolidCompression=yes
 ArchitecturesInstallIn64BitMode=x64compatible
+SetupIconFile=omoklan.ico
+UninstallDisplayIcon={app}\{#MyAppExeName}
 
 ; 마법사 테마 및 스타일
 WizardStyle=modern

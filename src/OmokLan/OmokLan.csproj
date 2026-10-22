@@ -15,7 +15,7 @@
     <Product>LAN 오목</Product>
     <AssemblyTitle>LAN 오목</AssemblyTitle>
     <Version>1.0.0</Version>
-    <ApplicationIcon Condition="Exists('Assets\omoklan.ico')">Assets\omoklan.ico</ApplicationIcon>
+    <ApplicationIcon>Assets\omoklan.ico</ApplicationIcon>
   </PropertyGroup>
 
   <!-- 폐쇄망 배포: dotnet publish -c Release -r win-x64 (설치 불필요 단일 exe) -->
@@ -27,7 +27,7 @@
     <DebugType>none</DebugType>
   </PropertyGroup>
 
-  <ItemGroup Condition="Exists('Assets\omoklan.ico')">
+  <ItemGroup>
     <Resource Include="Assets\omoklan.ico" />
   </ItemGroup>
 
