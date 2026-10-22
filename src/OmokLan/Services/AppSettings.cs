@@ -11,6 +11,9 @@ public sealed class AppSettings
     public string Nickname { get; set; } = "";
     public int AvatarId { get; set; } = 0;
     public bool HasCompletedSetup { get; set; } = false;
+    
+    /// <summary>게임 시작 시 진짜 Windows 터미널(CLI 콘솔)을 띄워 플레이하는 스텔스 위장 모드 여부</summary>
+    public bool UseTerminalStealthMode { get; set; } = false;
 
     private static string FilePath =>
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "OmokLan", "settings.json");
@@ -58,6 +61,7 @@ public static class NetInfo
                 .SelectMany(t => t.Props.UnicastAddresses)
                 .Where(u => u.Address.AddressFamily == AddressFamily.InterNetwork)
                 .Select(u => u.Address.ToString());
+
             return candidates.FirstOrDefault() ?? "127.0.0.1";
         }
         catch (Exception)

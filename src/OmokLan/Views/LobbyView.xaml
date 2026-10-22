@@ -69,7 +69,15 @@
                         </StackPanel>
                     </Button>
 
-                    <TextBlock Text="방해금지 모드" FontSize="13" Foreground="#ECEEFA" VerticalAlignment="Center" Margin="0,0,10,0" />
+                    <!-- 💻 개발자 터미널(스텔스) 모드 스위치 -->
+                    <Border Background="#1C233D" BorderBrush="#2F3B66" BorderThickness="1" CornerRadius="8" Padding="10,4" Margin="0,0,16,0" VerticalAlignment="Center">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock Text="💻 개발자 터미널 모드" FontSize="12" FontWeight="SemiBold" Foreground="#38BDF8" VerticalAlignment="Center" Margin="0,0,8,0" />
+                            <CheckBox Style="{StaticResource Toggle}" IsChecked="{Binding UseTerminalMode}" VerticalAlignment="Center" ToolTip="대결 시작 시 실제 Windows 터미널(콘솔) 창을 띄워 완벽하게 위장합니다." />
+                        </StackPanel>
+                    </Border>
+
+                    <TextBlock Text="방해금지" FontSize="13" Foreground="#ECEEFA" VerticalAlignment="Center" Margin="0,0,10,0" />
                     <CheckBox Style="{StaticResource Toggle}" IsChecked="{Binding IsDnd}" VerticalAlignment="Center" />
                 </StackPanel>
             </Grid>

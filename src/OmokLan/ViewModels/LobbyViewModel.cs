@@ -66,6 +66,7 @@ public sealed class LobbyViewModel : ObservableObject, IDisposable
 {
     private readonly LanBeacon _beacon;
     private readonly DuelHost _host;
+    private readonly Services.AppSettings _settings;
     private readonly Action<DuelSession> _onStartGame;
 
     private bool _isDnd;
@@ -82,10 +83,11 @@ public sealed class LobbyViewModel : ObservableObject, IDisposable
     private Services.LanBotPeer? _botPeer;
     private bool _isBotActive;
 
-    public LobbyViewModel(LanBeacon beacon, DuelHost host, Action<DuelSession> onStartGame)
+    public LobbyViewModel(LanBeacon beacon, DuelHost host, Services.AppSettings settings, Action<DuelSession> onStartGame)
     {
         _beacon = beacon;
         _host = host;
+        _settings = settings;
         _onStartGame = onStartGame;
 
         Peers = new ObservableCollection<PeerItemViewModel>();
@@ -178,6 +180,21 @@ public sealed class LobbyViewModel : ObservableObject, IDisposable
     public bool IsEasy => BotDifficulty == Services.AiDifficulty.Easy;
     public bool IsNormal => BotDifficulty == Services.AiDifficulty.Normal;
     public bool IsHard => BotDifficulty == Services.AiDifficulty.Hard;
+
+    public bool UseTerminalMode
+    {
+        get => _settings.UseTerminalStealthMode;
+        set
+        {
+            if (_settings.UseTerminalStealthMode != value)
+            {
+                _settings.UseTerminalStealthMode = value;
+                _settings.Save();
+                Raise(nameof(UseTerminalMode));
+                Ui.Toast?.Invoke(value ? "💻 개발자 터미널(CLI) 모드가 활성화되었습니다. 대결 시작 시 실제 콘솔 창이 열립니다." : "🎮 일반 GUI 모드가 활성화되었습니다.");
+            }
+        }
+    }
 
     public ICommand SelectDifficultyCommand { get; }
 

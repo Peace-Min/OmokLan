@@ -151,9 +151,11 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         });
         _beacon.Start();
 
-        _lobbyVm = new LobbyViewModel(_beacon, _host, StartGame);
+        _lobbyVm = new LobbyViewModel(_beacon, _host, _settings, StartGame);
         CurrentView = _lobbyVm;
     }
+
+    private Services.TerminalMatchSession? _terminalSession;
 
     private void StartGame(DuelSession session)
     {
@@ -163,17 +165,31 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             _beacon?.AnnounceNow();
 
             var match = new OmokMatch(session, _settings.Nickname, _settings.AvatarId);
-            _gameVm = new GameViewModel(match, () =>
+
+            Action onGameEnd = () =>
             {
                 // 게임 종료 후 로비로 복귀
                 if (_host is not null) _host.Engaged = false;
                 _beacon?.AnnounceNow();
                 _gameVm = null;
+                _terminalSession?.Dispose();
+                _terminalSession = null;
                 CurrentView = _lobbyVm;
                 _lobbyVm?.RefreshPeers();
-            });
+            };
 
-            CurrentView = _gameVm;
+            if (_settings.UseTerminalStealthMode)
+            {
+                // 💻 개발자 스텔스 모드: 실제 Windows 콘솔 팝업 및 WPF 최소화
+                _terminalSession = new Services.TerminalMatchSession(match, onGameEnd);
+                _terminalSession.Start();
+            }
+            else
+            {
+                // 🎮 일반 모드: WPF 그래픽 뷰 사용
+                _gameVm = new GameViewModel(match, onGameEnd);
+                CurrentView = _gameVm;
+            }
         });
     }
 
