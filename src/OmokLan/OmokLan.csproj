@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\OmokLan.Engine\OmokLan.Engine.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <AssemblyName>OmokLan</AssemblyName>
+    <RootNamespace>OmokLan</RootNamespace>
+    <Product>LAN 오목</Product>
+    <AssemblyTitle>LAN 오목</AssemblyTitle>
+    <Version>1.0.0</Version>
+    <ApplicationIcon Condition="Exists('Assets\omoklan.ico')">Assets\omoklan.ico</ApplicationIcon>
+  </PropertyGroup>
+
+  <!-- 폐쇄망 배포: dotnet publish -c Release -r win-x64 (설치 불필요 단일 exe) -->
+  <PropertyGroup Condition="'$(RuntimeIdentifier)' != ''">
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <DebugType>none</DebugType>
+  </PropertyGroup>
+
+  <ItemGroup Condition="Exists('Assets\omoklan.ico')">
+    <Resource Include="Assets\omoklan.ico" />
+  </ItemGroup>
+
+</Project>

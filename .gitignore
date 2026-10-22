@@ -1,0 +1,21 @@
+## .NET Core / Visual Studio
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+.vs/
+.vscode/
+
+## Publish / Build outputs
+publish/
+dist/
+*.exe
+*.dll
+*.pdb
+
+## Local Settings
+settings.json

@@ -1,0 +1,259 @@
+<UserControl x:Class="OmokLan.Views.GameView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+             xmlns:views="clr-namespace:OmokLan.Views"
+             mc:Ignorable="d" 
+             d:DesignHeight="760" d:DesignWidth="1100">
+
+    <UserControl.Resources>
+        <views:BoolToVisibility x:Key="BoolToVisibility" />
+        <views:NotNullToVisibility x:Key="NotNullToVisibility" />
+        <views:AvatarToBrushConverter x:Key="AvatarToBrush" />
+        <views:AvatarToSymbolConverter x:Key="AvatarToSymbol" />
+        <views:StoneToTextConverter x:Key="StoneToText" />
+        <views:TimerColorConverter x:Key="TimerColor" />
+    </UserControl.Resources>
+
+    <Grid Margin="20">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="340" />
+        </Grid.ColumnDefinitions>
+
+        <!-- 좌측: 플레이어 바 + 30초 타이머 + 15x15 오목판 -->
+        <Grid Grid.Column="0" Margin="0,0,16,0">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <!-- 상단 플레이어 VS 정보 및 30초 턴 타이머 바 -->
+            <Border Grid.Row="0" Style="{StaticResource Card}" Padding="16,12" Margin="0,0,0,12">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+
+                    <!-- 나 (플레이어 1) -->
+                    <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                        <Border Width="46" Height="46" CornerRadius="23"
+                                Background="{Binding MyAvatar, Converter={StaticResource AvatarToBrush}}"
+                                Margin="0,0,12,0">
+                            <TextBlock Text="{Binding MyAvatar, Converter={StaticResource AvatarToSymbol}}"
+                                       FontSize="22" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <StackPanel VerticalAlignment="Center">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="{Binding MyNick}" FontSize="15" FontWeight="Bold" Foreground="#ECEEFA" />
+                                <Border Background="#20FFFFFF" CornerRadius="8" Padding="6,2" Margin="8,0,0,0">
+                                    <TextBlock Text="나" FontSize="10" FontWeight="SemiBold" Foreground="#38BDF8" />
+                                </Border>
+                            </StackPanel>
+                            <TextBlock Text="{Binding MyColor, Converter={StaticResource StoneToText}}"
+                                       FontSize="12" FontWeight="SemiBold" Foreground="#F59E0B" Margin="0,2,0,0" />
+                        </StackPanel>
+                    </StackPanel>
+
+                    <!-- 중앙: 30초 타이머 및 라운드/턴 정보 -->
+                    <StackPanel Grid.Column="1" HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding Round, StringFormat='ROUND {0}'}"
+                                   FontSize="11" FontWeight="Bold" Foreground="#8C92B8" HorizontalAlignment="Center" />
+
+                        <!-- 30초 카운트다운 게이지 -->
+                        <Border Background="#161A2E" BorderBrush="{Binding RemainingSeconds, Converter={StaticResource TimerColor}}"
+                                BorderThickness="2" CornerRadius="16" Padding="14,4" Margin="0,4,0,4">
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                <TextBlock Text="⏱️ " FontSize="14" VerticalAlignment="Center" />
+                                <TextBlock Text="{Binding RemainingSeconds, StringFormat='{}{0}s'}"
+                                           FontSize="18" FontWeight="Black"
+                                           Foreground="{Binding RemainingSeconds, Converter={StaticResource TimerColor}}"
+                                           VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Border>
+
+                        <TextBlock Text="{Binding StatusMessage}" FontSize="11" Foreground="#94A3B8"
+                                   HorizontalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="280" />
+                    </StackPanel>
+
+                    <!-- 상대방 (플레이어 2) -->
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                        <StackPanel VerticalAlignment="Center" HorizontalAlignment="Right" Margin="0,0,12,0">
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                <Border Background="#20FFFFFF" CornerRadius="8" Padding="6,2" Margin="0,0,8,0">
+                                    <TextBlock Text="상대" FontSize="10" FontWeight="SemiBold" Foreground="#FB7185" />
+                                </Border>
+                                <TextBlock Text="{Binding OpponentNick}" FontSize="15" FontWeight="Bold" Foreground="#ECEEFA" />
+                            </StackPanel>
+                            <TextBlock Text="{Binding MyColor, Converter={StaticResource StoneToText}}"
+                                       FontSize="12" FontWeight="SemiBold" Foreground="#A78BFA"
+                                       HorizontalAlignment="Right" Margin="0,2,0,0" />
+                        </StackPanel>
+                        <Border Width="46" Height="46" CornerRadius="23"
+                                Background="{Binding OpponentAvatar, Converter={StaticResource AvatarToBrush}}">
+                            <TextBlock Text="{Binding OpponentAvatar, Converter={StaticResource AvatarToSymbol}}"
+                                       FontSize="22" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- 15x15 오목판 렌더러 -->
+            <Border Grid.Row="1" Style="{StaticResource Card}" Padding="8">
+                <views:OmokBoardCanvas x:Name="BoardCanvas" Game="{Binding}" />
+            </Border>
+        </Grid>
+
+        <!-- 우측: 채팅창 및 액션 버튼 패널 -->
+        <Border Grid.Column="1" Style="{StaticResource Card}" Padding="16">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <!-- 채팅 헤더 -->
+                <TextBlock Grid.Row="0" Text="💬 실시간 채팅" FontSize="16" FontWeight="Bold" Foreground="#ECEEFA" Margin="0,0,0,12" />
+
+                <!-- 채팅 메시지 스크롤 리스트 -->
+                <ScrollViewer Grid.Row="1" x:Name="ChatScrollViewer" VerticalScrollBarVisibility="Auto" Margin="0,0,0,12">
+                    <ItemsControl ItemsSource="{Binding ChatMessages}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Margin="0,4">
+                                    <!-- 내 메시지 (우측 정렬) -->
+                                    <StackPanel HorizontalAlignment="Right" Visibility="{Binding IsMine, Converter={StaticResource BoolToVisibility}}">
+                                        <Border Background="#8B5CF6" CornerRadius="14,14,2,14" Padding="12,8" MaxWidth="240">
+                                            <TextBlock Text="{Binding Text}" Foreground="White" FontSize="13" TextWrapping="Wrap" />
+                                        </Border>
+                                        <TextBlock Text="{Binding Time, StringFormat='HH:mm'}" FontSize="10" Foreground="#64748B" HorizontalAlignment="Right" Margin="0,2,2,0" />
+                                    </StackPanel>
+
+                                    <!-- 상대방 메시지 (좌측 정렬) -->
+                                    <StackPanel HorizontalAlignment="Left" Visibility="{Binding IsMine, Converter={StaticResource BoolToVisibility}, ConverterParameter='!'}">
+                                        <TextBlock Text="{Binding Sender}" FontSize="11" Foreground="#94A3B8" Margin="4,0,0,2" />
+                                        <Border Background="#1E2340" BorderBrush="#33FFFFFF" BorderThickness="1"
+                                                CornerRadius="14,14,14,2" Padding="12,8" MaxWidth="240">
+                                            <TextBlock Text="{Binding Text}" Foreground="#ECEEFA" FontSize="13" TextWrapping="Wrap" />
+                                        </Border>
+                                        <TextBlock Text="{Binding Time, StringFormat='HH:mm'}" FontSize="10" Foreground="#64748B" HorizontalAlignment="Left" Margin="4,2,0,0" />
+                                    </StackPanel>
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+
+                <!-- 채팅 입력 영역 -->
+                <Grid Grid.Row="2" Margin="0,0,0,16">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="8" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+
+                    <TextBox Grid.Column="0" Style="{StaticResource Input}"
+                             Text="{Binding ChatInput, UpdateSourceTrigger=PropertyChanged}"
+                             KeyDown="OnChatInputKeyDown"
+                             Padding="10,8" FontSize="13" MaxLength="100" />
+
+                    <Button Grid.Column="2" Content="전송" Style="{StaticResource Btn.Primary}"
+                            Command="{Binding SendChatCommand}" Padding="14,8" />
+                </Grid>
+
+                <!-- 하단 게임 조작 버튼 (기권 / 로비로 나가기) -->
+                <Grid Grid.Row="3">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="10" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+
+                    <Button Grid.Column="0" Content="🏳️ 기권" Style="{StaticResource Btn.Danger}"
+                            Command="{Binding ResignCommand}" />
+
+                    <Button Grid.Column="2" Content="🚪 나가기" Style="{StaticResource Btn.Ghost}"
+                            Command="{Binding LeaveCommand}" />
+                </Grid>
+            </Grid>
+        </Border>
+
+        <!-- [오버레이 1] 코인 토스 3D 플립 애니메이션 -->
+        <views:CoinTossControl Grid.ColumnSpan="2"
+                               Visibility="{Binding IsCoinTossing, Converter={StaticResource BoolToVisibility}}" />
+
+        <!-- [오버레이 2] 대국 종료 결과 배너 및 재대결 신청 창 -->
+        <Grid Grid.ColumnSpan="2" Background="#D5080B16"
+              Visibility="{Binding IsResultBannerOpen, Converter={StaticResource BoolToVisibility}}">
+            <Border HorizontalAlignment="Center" VerticalAlignment="Center"
+                    Width="460" Background="#EE161A2E"
+                    BorderBrush="{Binding IsVictory, Converter={StaticResource PresenceToBrush}}"
+                    BorderThickness="2" CornerRadius="24" Padding="32">
+                <Border.Effect>
+                    <DropShadowEffect BlurRadius="50" Color="#8B5CF6" Opacity="0.6" />
+                </Border.Effect>
+
+                <StackPanel HorizontalAlignment="Center">
+                    <TextBlock Text="{Binding ResultBannerText}" FontSize="22" FontWeight="Bold"
+                               Foreground="#ECEEFA" HorizontalAlignment="Center" TextAlignment="Center" />
+
+                    <TextBlock Text="새로운 판을 시작하거나 로비로 나갈 수 있습니다."
+                               FontSize="13" Foreground="#8C92B8" HorizontalAlignment="Center" Margin="0,8,0,24" />
+
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                        <Button Content="🔄 재대결 신청" Style="{StaticResource Btn.Primary}"
+                                Command="{Binding RequestRematchCommand}" Margin="0,0,12,0" />
+
+                        <Button Content="🚪 로비로 나가기" Style="{StaticResource Btn.Ghost}"
+                                Command="{Binding LeaveCommand}" />
+                    </StackPanel>
+
+                    <!-- 재대결 응답 대기 중 안내 -->
+                    <TextBlock Text="상대방의 재대결 수락을 기다리는 중..."
+                               FontSize="12" Foreground="#FBBF24" HorizontalAlignment="Center" Margin="0,14,0,0"
+                               Visibility="{Binding IsAwaitingRematch, Converter={StaticResource BoolToVisibility}}" />
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <!-- [오버레이 3] 상대방이 보낸 재대결 요청 수락/거절 팝업 -->
+        <Grid Grid.ColumnSpan="2" Background="#D5080B16"
+              Visibility="{Binding HasRematchOffer, Converter={StaticResource BoolToVisibility}}">
+            <Border HorizontalAlignment="Center" VerticalAlignment="Center"
+                    Width="420" Background="#EE161A2E" BorderBrush="#38BDF8" BorderThickness="2"
+                    CornerRadius="24" Padding="28">
+                <Border.Effect>
+                    <DropShadowEffect BlurRadius="40" Color="#38BDF8" Opacity="0.7" />
+                </Border.Effect>
+
+                <StackPanel HorizontalAlignment="Center">
+                    <TextBlock Text="⚔️ 재대결 요청!" FontSize="20" FontWeight="Bold" Foreground="#ECEEFA" HorizontalAlignment="Center" />
+                    <TextBlock Text="{Binding OpponentNick, StringFormat='{}{0} 님이 재대결을 신청했습니다.'}"
+                               FontSize="14" Foreground="#8C92B8" HorizontalAlignment="Center" Margin="0,8,0,6" />
+                    <TextBlock Text="수락 시 코인 토스로 선공이 다시 결정됩니다."
+                               FontSize="12" Foreground="#38BDF8" HorizontalAlignment="Center" Margin="0,0,0,20" />
+
+                    <Grid Width="280">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="12" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+
+                        <Button Grid.Column="0" Content="거절" Style="{StaticResource Btn.Danger}"
+                                Command="{Binding DeclineRematchCommand}" />
+
+                        <Button Grid.Column="2" Content="수락" Style="{StaticResource Btn.Success}"
+                                Command="{Binding AcceptRematchCommand}" />
+                    </Grid>
+                </StackPanel>
+            </Border>
+        </Grid>
+
+    </Grid>
+</UserControl>
