@@ -31,4 +31,30 @@
     <Resource Include="Assets\omoklan.ico" />
   </ItemGroup>
 
+  <!-- dotnet publish 완료 후 Inno Setup 자동 연동 인스톨러 생성 타깃 -->
+  <Target Name="GenerateInnoInstaller" AfterTargets="Publish" Condition="'$(RuntimeIdentifier)' != ''">
+    <PropertyGroup>
+      <InnoSetupDir Condition="Exists('$(LOCALAPPDATA)\Programs\Inno Setup 6\ISCC.exe')">$(LOCALAPPDATA)\Programs\Inno Setup 6</InnoSetupDir>
+      <InnoSetupDir Condition="'$(InnoSetupDir)' == '' And Exists('C:\Program Files (x86)\Inno Setup 6\ISCC.exe')">C:\Program Files (x86)\Inno Setup 6</InnoSetupDir>
+      <InnoSetupDir Condition="'$(InnoSetupDir)' == '' And Exists('C:\Program Files\Inno Setup 6\ISCC.exe')">C:\Program Files\Inno Setup 6</InnoSetupDir>
+      <IsccExe Condition="'$(InnoSetupDir)' != ''">$(InnoSetupDir)\ISCC.exe</IsccExe>
+      <IssScript>$(MSBuildProjectDirectory)\..\..\installer\OmokLan.iss</IssScript>
+      <InstallerOutDir>$(MSBuildProjectDirectory)\..\..\dist</InstallerOutDir>
+      <NormalizedPublishDir>$([System.IO.Path]::GetFullPath('$(PublishDir)'))</NormalizedPublishDir>
+    </PropertyGroup>
+
+    <Message Importance="high" Text="================================================================" />
+    <Message Importance="high" Text="[OmokLan] 게시(Publish) 완료. Inno Setup 인스톨러 자동 생성 시작..." />
+    <Message Importance="high" Text=" - ISCC 경로: $(IsccExe)" />
+    <Message Importance="high" Text=" - 소스 디렉터리: $(NormalizedPublishDir)" />
+    <Message Importance="high" Text=" - 출력 디렉터리: $(InstallerOutDir)" />
+    <Message Importance="high" Text="================================================================" />
+
+    <Exec Condition="'$(IsccExe)' != '' And Exists('$(IssScript)')"
+          Command="&quot;$(IsccExe)&quot; &quot;/DAppSourceDir=$(NormalizedPublishDir.TrimEnd('\'))&quot; &quot;/DOutputDir=$(InstallerOutDir)&quot; &quot;$(IssScript)&quot;"
+          WorkingDirectory="$(MSBuildProjectDirectory)\..\..\installer" />
+
+    <Message Importance="high" Condition="'$(IsccExe)' == ''" Text="[주의] 시스템에 Inno Setup 6 (ISCC.exe)가 감지되지 않아 인스톨러 생성을 건너뜁니다." />
+  </Target>
+
 </Project>

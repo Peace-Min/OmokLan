@@ -9,6 +9,14 @@
 #define MyAppURL "https://github.com/Peace-Min/OmokLan"
 #define MyAppExeName "OmokLan.exe"
 
+#ifndef AppSourceDir
+  #define AppSourceDir "..\publish\win-x64"
+#endif
+
+#ifndef OutputDir
+  #define OutputDir "..\dist"
+#endif
+
 [Setup]
 ; 고유 애플리케이션 ID (업그레이드 및 제거 시 식별용)
 AppId={{5D27E7B0-9A1F-4384-B473-8C6EA53B25A1}
@@ -30,7 +38,7 @@ DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
 
 ; 설치 패키지 출력 설정 (초고압축 단일 exe 생성)
-OutputDir=..\dist
+OutputDir={#OutputDir}
 OutputBaseFilename=OmokLan_Setup_v1.1
 Compression=lzma2/ultra64
 SolidCompression=yes
@@ -51,7 +59,7 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 
 [Files]
 ; 독립 실행형 단일 실행 바이너리 및 안내 파일
-Source: "..\publish\win-x64\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#AppSourceDir}\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
 Source: "사내망_배포안내.txt"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
