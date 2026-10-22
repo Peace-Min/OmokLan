@@ -32,6 +32,9 @@ public sealed class ActionCommand : ICommand
     public ActionCommand(Action execute)
         : this(_ => { execute(); return Task.CompletedTask; }, (Func<object?, bool>?)null) { }
 
+    public ActionCommand(Action<object?> execute)
+        : this(p => { execute(p); return Task.CompletedTask; }, (Func<object?, bool>?)null) { }
+
     public ActionCommand(Action execute, Func<bool>? canExecute)
         : this(_ => { execute(); return Task.CompletedTask; }, canExecute is null ? null : _ => canExecute()) { }
 

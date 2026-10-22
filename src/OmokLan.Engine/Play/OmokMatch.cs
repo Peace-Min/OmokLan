@@ -29,7 +29,8 @@ public sealed record BoardView(
     int TurnSecondsRemaining,
     Stone MyColor,
     bool CoinTossActive,
-    Stone CoinWinnerColor);
+    Stone CoinWinnerColor,
+    bool IsPaused = false);
 
 /// <summary>
 /// 채팅 메시지 항목.
@@ -58,6 +59,7 @@ public sealed class OmokMatch : IDisposable
     private int _remainingSeconds = TurnTimeLimitSeconds;
     private bool _coinTossActive;
     private Stone _coinWinnerColor = Stone.None;
+    private bool _isPaused;
 
     public OmokMatch(DuelSession session, string myNick, int myAvatar)
     {
@@ -83,15 +85,45 @@ public sealed class OmokMatch : IDisposable
     public int Round { get; private set; } = 1;
     public MatchResult? LastResult { get; private set; }
 
+    public bool IsPaused
+    {
+        get { lock (_sync) return _isPaused; }
+    }
+
     public bool IsMyTurn
     {
         get
         {
             lock (_sync)
             {
-                return !_coinTossActive && !_board.IsOver && _board.Turn == MyColor && _session.IsAlive;
+                return !_coinTossActive && !_isPaused && !_board.IsOver && _board.Turn == MyColor && _session.IsAlive;
             }
         }
+    }
+
+    public void Pause()
+    {
+        lock (_sync)
+        {
+            if (_isPaused || _board.IsOver || _coinTossActive) return;
+            _isPaused = true;
+            _turnTimer.Stop();
+        }
+        StateChanged?.Invoke();
+    }
+
+    public void Resume()
+    {
+        lock (_sync)
+        {
+            if (!_isPaused || _board.IsOver || _coinTossActive) return;
+            _isPaused = false;
+            if (_session.IsAlive)
+            {
+                _turnTimer.Start();
+            }
+        }
+        StateChanged?.Invoke();
     }
 
     public bool AwaitingRematchReply
@@ -179,14 +211,15 @@ public sealed class OmokMatch : IDisposable
                 _remainingSeconds,
                 MyColor,
                 _coinTossActive,
-                _coinWinnerColor);
+                _coinWinnerColor,
+                _isPaused);
         }
     }
 
     private void ResetTurnTimerLocked()
     {
         _turnTimer.Stop();
-        if (!_board.IsOver && !_coinTossActive && _session.IsAlive)
+        if (!_board.IsOver && !_coinTossActive && !_isPaused && _session.IsAlive)
         {
             _remainingSeconds = TurnTimeLimitSeconds;
             _turnTimer.Start();
@@ -200,7 +233,7 @@ public sealed class OmokMatch : IDisposable
 
         lock (_sync)
         {
-            if (_board.IsOver || _coinTossActive || !_session.IsAlive)
+            if (_board.IsOver || _coinTossActive || _isPaused || !_session.IsAlive)
             {
                 _turnTimer.Stop();
                 return;
@@ -248,7 +281,7 @@ public sealed class OmokMatch : IDisposable
         int sequence;
         lock (_sync)
         {
-            if (!_session.IsAlive || _coinTossActive || _board.IsOver || _board.Turn != MyColor)
+            if (!_session.IsAlive || _coinTossActive || _isPaused || _board.IsOver || _board.Turn != MyColor)
                 return false;
 
             outcome = _board.TryPlace(x, y, MyColor);

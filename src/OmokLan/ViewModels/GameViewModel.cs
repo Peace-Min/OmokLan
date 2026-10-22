@@ -126,6 +126,20 @@ public sealed class GameViewModel : ObservableObject
             _onLeave();
         });
 
+        TogglePauseCommand = new ActionCommand(() =>
+        {
+            if (_match.IsPaused)
+            {
+                _match.Resume();
+            }
+            else
+            {
+                _match.Pause();
+            }
+            Raise(nameof(IsPaused));
+            StatusMessage = _match.IsPaused ? "⏸️ AI 대결이 일시정지되었습니다." : (IsMyTurn ? $"내 차례입니다! ({MyColor.ToKorean()})" : $"상대방({OpponentNick})이 고민 중입니다...");
+        }, () => IsAiMatch && !IsOver && !IsCoinTossing);
+
         // 이벤트 연결
         _match.StateChanged += OnMatchStateChanged;
         _match.ChatReceived += OnMatchChatReceived;
@@ -151,8 +165,18 @@ public sealed class GameViewModel : ObservableObject
     public Stone MyColor
     {
         get => _myColor;
-        private set => Set(ref _myColor, value);
+        private set
+        {
+            if (Set(ref _myColor, value))
+            {
+                Raise(nameof(OpponentColor));
+            }
+        }
     }
+
+    public Stone OpponentColor => _myColor.Opponent();
+    public bool IsPaused => _match.IsPaused;
+    public bool IsAiMatch => OpponentNick.Contains("알파오목");
 
     public Stone CurrentTurn
     {
@@ -254,6 +278,7 @@ public sealed class GameViewModel : ObservableObject
     public ICommand AcceptRematchCommand { get; }
     public ICommand DeclineRematchCommand { get; }
     public ICommand LeaveCommand { get; }
+    public ICommand TogglePauseCommand { get; }
 
     public void NotifyProfileChanged()
     {
@@ -318,13 +343,21 @@ public sealed class GameViewModel : ObservableObject
 
             // 착수 즉시 0ms 화면 재렌더링 트리거
             BoardInvalidated?.Invoke();
+            Raise(nameof(IsPaused));
 
             if (!snap.IsOver && !snap.CoinTossActive)
             {
                 IsResultBannerOpen = false;
-                StatusMessage = IsMyTurn
-                    ? $"내 차례입니다! ({MyColor.ToKorean()}) - 30초 내 착수하세요."
-                    : $"상대방({OpponentNick})이 고민 중입니다...";
+                if (_match.IsPaused)
+                {
+                    StatusMessage = "⏸️ AI 대결이 일시정지되었습니다.";
+                }
+                else
+                {
+                    StatusMessage = IsMyTurn
+                        ? $"내 차례입니다! ({MyColor.ToKorean()}) - 30초 내 착수하세요."
+                        : $"상대방({OpponentNick})이 고민 중입니다...";
+                }
             }
         });
     }

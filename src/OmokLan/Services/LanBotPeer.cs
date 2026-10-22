@@ -5,6 +5,13 @@ using OmokLan.Engine.Play;
 
 namespace OmokLan.Services;
 
+public enum AiDifficulty
+{
+    Easy,   // 초급
+    Normal, // 중급
+    Hard    // 고급
+}
+
 /// <summary>
 /// 실제 UDP 브로드캐스트와 TCP 소켓을 통해 로비에 참여하고 대결을 진행하는 백그라운드 연습 봇입니다.
 /// </summary>
@@ -13,6 +20,7 @@ public sealed class LanBotPeer : IDisposable
     private readonly string _botId;
     private readonly string _botNick;
     private readonly int _botAvatar;
+    private readonly AiDifficulty _difficulty;
 
     private DuelHost? _host;
     private LanBeacon? _beacon;
@@ -21,14 +29,22 @@ public sealed class LanBotPeer : IDisposable
     private readonly CancellationTokenSource _cts = new();
     private bool _isRunning;
 
-    public LanBotPeer(string nick = "🤖 알파오목 (연습 봇)", int avatar = 6)
+    public LanBotPeer(AiDifficulty difficulty = AiDifficulty.Normal, int avatar = 6)
     {
+        _difficulty = difficulty;
+        string diffLabel = difficulty switch
+        {
+            AiDifficulty.Easy => "초급",
+            AiDifficulty.Hard => "고급",
+            _ => "중급"
+        };
         _botId = "bot_" + Guid.NewGuid().ToString("N")[..8];
-        _botNick = nick;
+        _botNick = $"🤖 알파오목 [{diffLabel}]";
         _botAvatar = avatar;
     }
 
     public bool IsRunning => _isRunning;
+    public AiDifficulty Difficulty => _difficulty;
 
     public void Start()
     {
@@ -53,10 +69,10 @@ public sealed class LanBotPeer : IDisposable
 
     private void OnChallengeReceived(IncomingChallenge req)
     {
-        // 1.2초 후 자동 수락
+        // 1초 후 자동 수락
         _ = Task.Run(async () =>
         {
-            await Task.Delay(1200, _cts.Token);
+            await Task.Delay(1000, _cts.Token);
             var session = await req.AcceptAsync();
             if (session is not null)
             {
@@ -80,13 +96,19 @@ public sealed class LanBotPeer : IDisposable
 
     private void OnMatchStateChanged()
     {
-        if (_activeMatch is null || !_activeMatch.IsMyTurn) return;
+        if (_activeMatch is null || !_activeMatch.IsMyTurn || _activeMatch.IsPaused) return;
 
-        // 봇의 차례: 1~1.8초 지연 후 착수
+        // 봇의 차례: 일시정지 중이면 대기 후 착수
         _ = Task.Run(async () =>
         {
-            await Task.Delay(1300, _cts.Token);
-            if (_activeMatch is null || !_activeMatch.IsMyTurn) return;
+            await Task.Delay(1100, _cts.Token);
+
+            while (_activeMatch is not null && _activeMatch.IsPaused && !_cts.Token.IsCancellationRequested)
+            {
+                await Task.Delay(250, _cts.Token);
+            }
+
+            if (_activeMatch is null || !_activeMatch.IsMyTurn || _activeMatch.IsPaused) return;
 
             var snap = _activeMatch.Snapshot();
             var move = FindBestMove(snap.Grid, _activeMatch.MyColor);
@@ -151,7 +173,7 @@ public sealed class LanBotPeer : IDisposable
     }
 
     /// <summary>
-    /// 간단한 오목 휴리스틱 알고리즘 (중앙 지향 + 공격/수비 가중치)
+    /// 난이도별 오목 AI 수 탐색 알고리즘
     /// </summary>
     private (int X, int Y)? FindBestMove(Stone[,] grid, Stone myColor)
     {
@@ -161,10 +183,30 @@ public sealed class LanBotPeer : IDisposable
         // 첫 수면 중앙 (7,7) 우선
         if (grid[7, 7] == Stone.None) return (7, 7);
 
+        var rng = new Random();
+
+        // [초급 모드]: 35% 확률로 주변 빈자리 무작위 착수 (초보자 배려 실수 유도)
+        if (_difficulty == AiDifficulty.Easy && rng.Next(100) < 35)
+        {
+            var candidates = new List<(int X, int Y)>();
+            for (int y = 0; y < size; y++)
+            {
+                for (int x = 0; x < size; x++)
+                {
+                    if (grid[x, y] == Stone.None && HasNeighbor(grid, x, y, size))
+                    {
+                        candidates.Add((x, y));
+                    }
+                }
+            }
+            if (candidates.Count > 0)
+            {
+                return candidates[rng.Next(candidates.Count)];
+            }
+        }
+
         int bestScore = -1;
         (int X, int Y)? bestCoord = null;
-
-        var rng = new Random();
 
         for (int y = 0; y < size; y++)
         {
@@ -172,14 +214,29 @@ public sealed class LanBotPeer : IDisposable
             {
                 if (grid[x, y] != Stone.None) continue;
 
-                // 인접한 돌이 없으면 건너뜀 (속도 최적화)
+                // 인접한 돌이 없으면 건너뜀 (연산 최적화)
                 if (!HasNeighbor(grid, x, y, size)) continue;
 
-                int attackScore = EvaluatePoint(grid, x, y, myColor, size);
-                int defenseScore = EvaluatePoint(grid, x, y, them, size);
+                int attackScore = EvaluatePoint(grid, x, y, myColor, size, _difficulty);
+                int defenseScore = EvaluatePoint(grid, x, y, them, size, _difficulty);
 
-                // 수비 가중치를 높여 상대 3~4목을 방어
-                int score = (attackScore * 11 / 10) + defenseScore + rng.Next(5);
+                int score;
+                if (_difficulty == AiDifficulty.Hard)
+                {
+                    // 고급: 공격 1.25배, 철통 수비, 중앙/화점 포지셔닝 가산
+                    int centerBonus = 14 - (Math.Abs(x - 7) + Math.Abs(y - 7));
+                    score = (int)(attackScore * 1.25) + defenseScore + centerBonus;
+                }
+                else if (_difficulty == AiDifficulty.Easy)
+                {
+                    // 초급: 단순 합산 및 노이즈
+                    score = attackScore + (defenseScore * 7 / 10) + rng.Next(20);
+                }
+                else
+                {
+                    // 중급: 정석 밸런스
+                    score = (attackScore * 11 / 10) + defenseScore + rng.Next(5);
+                }
 
                 if (score > bestScore)
                 {
@@ -207,9 +264,12 @@ public sealed class LanBotPeer : IDisposable
         return false;
     }
 
-    private int EvaluatePoint(Stone[,] grid, int x, int y, Stone color, int size)
+    private int EvaluatePoint(Stone[,] grid, int x, int y, Stone color, int size, AiDifficulty diff)
     {
         int total = 0;
+        int openThrees = 0;
+        int fours = 0;
+
         (int Dx, int Dy)[] dirs = { (1, 0), (0, 1), (1, 1), (1, -1) };
 
         foreach (var (dx, dy) in dirs)
@@ -247,10 +307,36 @@ public sealed class LanBotPeer : IDisposable
                 step++;
             }
 
-            if (count >= 5) total += 100000;
-            else if (count == 4 && openEnds > 0) total += (openEnds == 2 ? 10000 : 2500);
-            else if (count == 3 && openEnds > 0) total += (openEnds == 2 ? 1500 : 300);
-            else if (count == 2 && openEnds > 0) total += 50;
+            if (count >= 5)
+            {
+                total += 1000000; // 5목 승리 (최우선)
+            }
+            else if (count == 4)
+            {
+                fours++;
+                if (openEnds == 2) total += 120000; // 양쪽 열린 4목 (필승)
+                else if (openEnds == 1) total += (diff == AiDifficulty.Hard ? 18000 : 2500); // 닫힌 4목
+            }
+            else if (count == 3)
+            {
+                if (openEnds == 2)
+                {
+                    openThrees++;
+                    total += (diff == AiDifficulty.Hard ? 12000 : 1500); // 열린 3목
+                }
+                else if (openEnds == 1) total += 300;
+            }
+            else if (count == 2 && openEnds > 0)
+            {
+                total += (openEnds == 2 ? 120 : 40);
+            }
+        }
+
+        // 고급 모드: 쌍삼(3-3) 및 4-3 복합 승리 패턴 가중치 대폭 추가
+        if (diff == AiDifficulty.Hard)
+        {
+            if (openThrees >= 2) total += 70000; // 더블 3목 (필승 수)
+            if (fours >= 1 && openThrees >= 1) total += 90000; // 4-3 공격/방어
         }
 
         return total;

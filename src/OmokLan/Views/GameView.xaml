@@ -58,22 +58,36 @@
                         </StackPanel>
                     </StackPanel>
 
-                    <!-- 중앙: 30초 타이머 및 라운드/턴 정보 -->
+                    <!-- 중앙: 30초 타이머 및 라운드/턴 정보 / AI 일시정지 -->
                     <StackPanel Grid.Column="1" HorizontalAlignment="Center" VerticalAlignment="Center">
                         <TextBlock Text="{Binding Round, StringFormat='ROUND {0}'}"
                                    FontSize="11" FontWeight="Bold" Foreground="#8C92B8" HorizontalAlignment="Center" />
 
-                        <!-- 30초 카운트다운 게이지 -->
-                        <Border Background="#161A2E" BorderBrush="{Binding RemainingSeconds, Converter={StaticResource TimerColor}}"
-                                BorderThickness="2" CornerRadius="16" Padding="14,4" Margin="0,4,0,4">
-                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                                <TextBlock Text="⏱️ " FontSize="14" VerticalAlignment="Center" />
-                                <TextBlock Text="{Binding RemainingSeconds, StringFormat='{}{0}s'}"
-                                           FontSize="18" FontWeight="Black"
-                                           Foreground="{Binding RemainingSeconds, Converter={StaticResource TimerColor}}"
-                                           VerticalAlignment="Center" />
-                            </StackPanel>
-                        </Border>
+                        <!-- 30초 카운트다운 게이지 및 일시정지 버튼 -->
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,4,0,4">
+                            <Border Background="#161A2E" BorderBrush="{Binding RemainingSeconds, Converter={StaticResource TimerColor}}"
+                                    BorderThickness="2" CornerRadius="16" Padding="14,4">
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                    <TextBlock Text="⏱️ " FontSize="14" VerticalAlignment="Center" />
+                                    <TextBlock Text="{Binding RemainingSeconds, StringFormat='{}{0}s'}"
+                                               FontSize="18" FontWeight="Black"
+                                               Foreground="{Binding RemainingSeconds, Converter={StaticResource TimerColor}}"
+                                               VerticalAlignment="Center" />
+                                </StackPanel>
+                            </Border>
+
+                            <!-- AI 모드 전용 일시정지/재개 버튼 -->
+                            <Button Style="{StaticResource Btn.Ghost}" Padding="8,4" Margin="8,0,0,0"
+                                    Command="{Binding TogglePauseCommand}"
+                                    Visibility="{Binding IsAiMatch, Converter={StaticResource BoolToVisibility}}">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="⏸️ 일시정지" FontSize="11" FontWeight="SemiBold"
+                                               Visibility="{Binding IsPaused, Converter={StaticResource BoolToVisibility}, ConverterParameter='!'}" />
+                                    <TextBlock Text="▶️ 계속하기" FontSize="11" FontWeight="SemiBold" Foreground="#34D399"
+                                               Visibility="{Binding IsPaused, Converter={StaticResource BoolToVisibility}}" />
+                                </StackPanel>
+                            </Button>
+                        </StackPanel>
 
                         <TextBlock Text="{Binding StatusMessage}" FontSize="11" Foreground="#94A3B8"
                                    HorizontalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="280" />
@@ -88,7 +102,8 @@
                                 </Border>
                                 <TextBlock Text="{Binding OpponentNick}" FontSize="15" FontWeight="Bold" Foreground="#ECEEFA" />
                             </StackPanel>
-                            <TextBlock Text="{Binding MyColor, Converter={StaticResource StoneToText}}"
+                            <!-- 상대방 실제 배정 색상 바인딩 (버그 수정: OpponentColor) -->
+                            <TextBlock Text="{Binding OpponentColor, Converter={StaticResource StoneToText}}"
                                        FontSize="12" FontWeight="SemiBold" Foreground="#A78BFA"
                                        HorizontalAlignment="Right" Margin="0,2,0,0" />
                         </StackPanel>
@@ -251,6 +266,29 @@
                         <Button Grid.Column="2" Content="수락" Style="{StaticResource Btn.Success}"
                                 Command="{Binding AcceptRematchCommand}" />
                     </Grid>
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <!-- [오버레이 4] AI 대결 일시정지 오버레이 -->
+        <Grid Grid.ColumnSpan="2" Background="#C8080B16"
+              Visibility="{Binding IsPaused, Converter={StaticResource BoolToVisibility}}">
+            <Border HorizontalAlignment="Center" VerticalAlignment="Center"
+                    Width="380" Background="#EE161A2E" BorderBrush="#F59E0B" BorderThickness="2"
+                    CornerRadius="24" Padding="32">
+                <Border.Effect>
+                    <DropShadowEffect BlurRadius="40" Color="#F59E0B" Opacity="0.6" />
+                </Border.Effect>
+
+                <StackPanel HorizontalAlignment="Center">
+                    <TextBlock Text="⏸️" FontSize="44" HorizontalAlignment="Center" Margin="0,0,0,10" />
+                    <TextBlock Text="AI 대결 일시정지 중" FontSize="20" FontWeight="Bold" Foreground="#ECEEFA" HorizontalAlignment="Center" />
+                    <TextBlock Text="타이머와 AI의 착수가 멈춰 있습니다."
+                               FontSize="13" Foreground="#8C92B8" HorizontalAlignment="Center" Margin="0,8,0,24" />
+
+                    <Button Content="▶️ 계속 진행하기" Style="{StaticResource Btn.Success}"
+                            Padding="24,10" FontSize="14" HorizontalAlignment="Center"
+                            Command="{Binding TogglePauseCommand}" />
                 </StackPanel>
             </Border>
         </Grid>

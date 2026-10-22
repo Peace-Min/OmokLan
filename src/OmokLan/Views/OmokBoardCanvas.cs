@@ -99,7 +99,7 @@ public sealed class OmokBoardCanvas : Canvas
 
     private void OnMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
-        if (Game is null || !Game.IsMyTurn || Game.IsOver || Game.IsCoinTossing) return;
+        if (Game is null || !Game.IsMyTurn || Game.IsOver || Game.IsCoinTossing || Game.IsPaused) return;
 
         var pos = e.GetPosition(this);
         var (cellSize, offsetX, offsetY) = CalculateMetrics();
@@ -258,7 +258,7 @@ public sealed class OmokBoardCanvas : Canvas
         }
 
         // 5. 마우스 호버 반투명 돌 미리보기 (내 턴일 때만)
-        if (Game.IsMyTurn && !Game.IsOver && !Game.IsCoinTossing && _hoverX != -1 && _hoverY != -1)
+        if (Game.IsMyTurn && !Game.IsOver && !Game.IsCoinTossing && !Game.IsPaused && _hoverX != -1 && _hoverY != -1)
         {
             if (Game.BoardCells[_hoverX, _hoverY].State == Stone.None)
             {

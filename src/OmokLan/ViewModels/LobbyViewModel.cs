@@ -116,10 +116,11 @@ public sealed class LobbyViewModel : ObservableObject, IDisposable
         {
             if (_botPeer is null)
             {
-                _botPeer = new Services.LanBotPeer();
+                _botPeer = new Services.LanBotPeer(BotDifficulty);
                 _botPeer.Start();
                 IsBotActive = true;
-                Ui.Toast?.Invoke("🤖 연습 상대(알파오목)가 로비에 입장했습니다!");
+                string label = BotDifficulty switch { Services.AiDifficulty.Easy => "초급", Services.AiDifficulty.Hard => "고급", _ => "중급" };
+                Ui.Toast?.Invoke($"🤖 연습 상대(알파오목 [{label}])가 로비에 입장했습니다!");
             }
             else
             {
@@ -130,11 +131,55 @@ public sealed class LobbyViewModel : ObservableObject, IDisposable
             }
         });
 
+        SelectDifficultyCommand = new ActionCommand(param =>
+        {
+            if (param is string diffStr && Enum.TryParse<Services.AiDifficulty>(diffStr, true, out var diff))
+            {
+                BotDifficulty = diff;
+                string label = diff switch { Services.AiDifficulty.Easy => "초급", Services.AiDifficulty.Hard => "고급", _ => "중급" };
+                if (_botPeer is null)
+                {
+                    _botPeer = new Services.LanBotPeer(diff);
+                    _botPeer.Start();
+                    IsBotActive = true;
+                }
+                Ui.Toast?.Invoke($"🤖 AI 난이도가 [{label}]으로 설정되었습니다.");
+            }
+        });
+
         DeclineIncomingCommand = new ActionCommand(() =>
         {
             DeclineIncomingChallenge();
         });
     }
+
+    private Services.AiDifficulty _botDifficulty = Services.AiDifficulty.Normal;
+
+    public Services.AiDifficulty BotDifficulty
+    {
+        get => _botDifficulty;
+        set
+        {
+            if (Set(ref _botDifficulty, value))
+            {
+                Raise(nameof(IsEasy));
+                Raise(nameof(IsNormal));
+                Raise(nameof(IsHard));
+                if (_botPeer is not null)
+                {
+                    _botPeer.Dispose();
+                    _botPeer = new Services.LanBotPeer(value);
+                    _botPeer.Start();
+                }
+            }
+        }
+    }
+
+    public bool IsEasy => BotDifficulty == Services.AiDifficulty.Easy;
+    public bool IsNormal => BotDifficulty == Services.AiDifficulty.Normal;
+    public bool IsHard => BotDifficulty == Services.AiDifficulty.Hard;
+
+    public ICommand SelectDifficultyCommand { get; }
 
     public ObservableCollection<PeerItemViewModel> Peers { get; }
 

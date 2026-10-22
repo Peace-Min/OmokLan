@@ -17,7 +17,7 @@ public sealed class DuelSession : IDisposable
     private int _ended;
     private int _started;
 
-    internal DuelSession(FramedChannel channel, bool isChallenger, string opponentId, string opponentNick, int opponentAvatar)
+    public DuelSession(FramedChannel channel, bool isChallenger, string opponentId, string opponentNick, int opponentAvatar)
     {
         _channel = channel;
         IsChallenger = isChallenger;

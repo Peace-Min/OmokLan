@@ -60,4 +60,31 @@ public class MatchTests
         Assert.Equal("안녕 반가워!", receivedChat.Text);
         Assert.Equal("철수", receivedChat.Sender);
     }
+
+    [Fact]
+    public async Task Match_PauseAndResume_TogglesStateCorrectly()
+    {
+        var listener = new System.Net.Sockets.TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        int port = ((IPEndPoint)listener.LocalEndpoint).Port;
+
+        var clientTask = Task.Run(() => new System.Net.Sockets.TcpClient("127.0.0.1", port));
+        using var serverClient = await listener.AcceptTcpClientAsync();
+        using var client = await clientTask;
+        listener.Stop();
+
+        using var channel = new FramedChannel(client);
+        using var session = new DuelSession(channel, true, "bot", "상대", 0);
+        using var match = new OmokMatch(session, "나", 1);
+
+        Assert.False(match.IsPaused);
+
+        match.Pause();
+        Assert.True(match.IsPaused);
+        Assert.True(match.Snapshot().IsPaused);
+
+        match.Resume();
+        Assert.False(match.IsPaused);
+        Assert.False(match.Snapshot().IsPaused);
+    }
 }
