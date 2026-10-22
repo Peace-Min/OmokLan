@@ -23,6 +23,19 @@ public sealed class TerminalMatchSession : IDisposable
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool FreeConsole();
 
+    [DllImport("kernel32.dll")]
+    private static extern IntPtr GetConsoleWindow();
+
+    [DllImport("user32.dll", CharSet = CharSet.Auto)]
+    private static extern IntPtr SendMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
+
+    [DllImport("shell32.dll", CharSet = CharSet.Auto)]
+    private static extern IntPtr ExtractIcon(IntPtr hInst, string lpszExeFileName, int nIconIndex);
+
+    private const uint WM_SETICON = 0x0080;
+    private const int ICON_SMALL = 0;
+    private const int ICON_BIG = 1;
+
     private static readonly string[] ColLabels = ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O"];
 
     private readonly OmokMatch _match;
@@ -51,7 +64,12 @@ public sealed class TerminalMatchSession : IDisposable
         AllocConsole();
         Console.OutputEncoding = Encoding.UTF8;
         Console.InputEncoding = Encoding.UTF8;
-        Console.Title = $"powershell.exe - omoklan@prod-k8s: ~/deploy (Duel vs {_match.OpponentNick})";
+        
+        // 🔒 완벽한 위장: 타이틀바를 순수 Windows PowerShell로 설정
+        Console.Title = "Windows PowerShell";
+
+        // 🔒 타이틀바 좌측 및 작업표시줄 아이콘을 실제 Windows PowerShell의 아이콘으로 교체
+        ApplyPowerShellIconToConsole();
 
         try
         {
@@ -78,8 +96,8 @@ public sealed class TerminalMatchSession : IDisposable
         _match.Finished += OnMatchFinished;
         _match.Disconnected += OnMatchDisconnected;
 
-        AddLog("INFO", "OmokLan Terminal Engine v1.1 initialized.");
-        AddLog("INFO", $"Connected to peer [{_match.OpponentNick}]. Waiting for coin toss...");
+        AddLog("INFO", "PowerShell Daemon host session initialized.");
+        AddLog("INFO", $"Peer node connected -> [{_match.OpponentNick}]. Waiting for sync token...");
 
         // 4. 입력 처리 백그라운드 루프 시작 (논블로킹 Key 루프)
         Task.Run(() => RunCliInputLoopAsync(_sessionCts.Token));
@@ -87,6 +105,34 @@ public sealed class TerminalMatchSession : IDisposable
         // 게임 개시
         _match.Begin();
         Redraw();
+    }
+
+    /// <summary>콘솔 창의 아이콘을 시스템의 실제 PowerShell/cmd 아이콘으로 교체하여 오목 아이콘을 숨깁니다.</summary>
+    private static void ApplyPowerShellIconToConsole()
+    {
+        try
+        {
+            IntPtr hConsole = GetConsoleWindow();
+            if (hConsole == IntPtr.Zero) return;
+
+            string sysDir = Environment.GetFolderPath(Environment.SpecialFolder.System);
+            string psExe = Path.Combine(sysDir, "WindowsPowerShell", "v1.0", "powershell.exe");
+            if (!File.Exists(psExe))
+            {
+                psExe = Path.Combine(sysDir, "cmd.exe");
+            }
+
+            IntPtr hIcon = ExtractIcon(IntPtr.Zero, psExe, 0);
+            if (hIcon != IntPtr.Zero)
+            {
+                SendMessage(hConsole, WM_SETICON, (IntPtr)ICON_SMALL, hIcon);
+                SendMessage(hConsole, WM_SETICON, (IntPtr)ICON_BIG, hIcon);
+            }
+        }
+        catch
+        {
+            // 아이콘 교체 실패는 무시
+        }
     }
 
     private void OnMatchStateChanged()
@@ -163,13 +209,13 @@ public sealed class TerminalMatchSession : IDisposable
                 Console.WriteLine("┌────────────────────────────────────────────────────────────────────────────────────────┐");
                 Console.Write("│ ");
                 Console.ForegroundColor = ConsoleColor.White;
-                Console.Write($"[K8S PROD NODE MESH] Match vs {_match.OpponentNick,-14}");
+                Console.Write($"[K8S PROD NODE MESH] Peer: {_match.OpponentNick,-16}");
                 Console.ForegroundColor = ConsoleColor.Yellow;
-                string myColorStr = _match.MyColor == Stone.Black ? "● 흑 (선공)" : (_match.MyColor == Stone.White ? "○ 백 (후공)" : "결정 중");
-                Console.Write($" | 돌: {myColorStr,-10}");
+                string myColorStr = _match.MyColor == Stone.Black ? "● P1 (Master)" : (_match.MyColor == Stone.White ? "○ P2 (Worker)" : "Syncing...");
+                Console.Write($" | Tag: {myColorStr,-12}");
                 Console.ForegroundColor = ConsoleColor.Green;
-                string turnStr = _match.IsMyTurn ? $"★ 내 차례 ({snap.TurnSecondsRemaining,2}s)" : $"상대방 고민 ({snap.TurnSecondsRemaining,2}s)";
-                Console.Write($" | 상태: {turnStr,-18}");
+                string turnStr = _match.IsMyTurn ? $"★ Local Lock ({snap.TurnSecondsRemaining,2}s)" : $"Peer Lock ({snap.TurnSecondsRemaining,2}s)";
+                Console.Write($" | Status: {turnStr,-18}");
                 Console.ForegroundColor = ConsoleColor.Cyan;
                 Console.WriteLine("│");
                 Console.WriteLine("├────────────────────────────────────────────────────────────────────────────────────────┤");
