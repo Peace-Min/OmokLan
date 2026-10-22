@@ -83,7 +83,11 @@ public sealed class GameViewModel : ObservableObject
         {
             if (param is BoardCellViewModel cell)
             {
-                await _match.PlaceAsync(cell.X, cell.Y);
+                bool ok = await _match.PlaceAsync(cell.X, cell.Y);
+                if (ok)
+                {
+                    BoardInvalidated?.Invoke();
+                }
             }
         }, () => IsMyTurn && !IsCoinTossing && !IsOver);
 
@@ -240,6 +244,9 @@ public sealed class GameViewModel : ObservableObject
         private set => Set(ref _isVictory, value);
     }
 
+    public event Action? BoardInvalidated;
+    public event Action<Stone>? CoinTossTriggered;
+
     public ICommand PlaceCommand { get; }
     public ICommand SendChatCommand { get; }
     public ICommand ResignCommand { get; }
@@ -259,11 +266,15 @@ public sealed class GameViewModel : ObservableObject
     {
         Ui.Post(() =>
         {
+            MyColor = _match.MyColor;
             IsCoinTossing = true;
             CoinWinnerColor = winnerColor;
-            bool iAmBlack = winnerColor == _match.MyColor;
-            CoinWinnerDesc = iAmBlack ? $"코인 토스 승리! 흑(선공)으로 시작합니다." : $"상대방 코인 토스 승리! 백(후공)으로 시작합니다.";
+            bool iAmBlack = _match.MyColor == Stone.Black;
+            CoinWinnerDesc = iAmBlack
+                ? $"코인 토스 승리! 흑(선공)으로 시작합니다."
+                : $"상대방 선공! 백(후공)으로 시작합니다.";
             StatusMessage = "코인 토스로 선공(흑)을 결정하는 중입니다...";
+            CoinTossTriggered?.Invoke(_match.MyColor);
         });
     }
 
@@ -304,6 +315,9 @@ public sealed class GameViewModel : ObservableObject
                     cell.IsWinLine = winSet.Contains((x, y));
                 }
             }
+
+            // 착수 즉시 0ms 화면 재렌더링 트리거
+            BoardInvalidated?.Invoke();
 
             if (!snap.IsOver && !snap.CoinTossActive)
             {

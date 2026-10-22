@@ -96,26 +96,62 @@
                             </Ellipse.Effect>
                         </Ellipse>
 
-                        <!-- 코인 전면 (내 아바타 및 심볼) -->
+                        <!-- 코인 전면: ⚫ 흑 (선공) -->
                         <Grid x:Name="FrontFace" Visibility="Visible">
-                            <Ellipse Width="144" Height="144"
-                                     Fill="{Binding MyAvatar, Converter={StaticResource AvatarToBrush}}" />
-                            <TextBlock Text="{Binding MyAvatar, Converter={StaticResource AvatarToSymbol}}"
-                                       FontSize="68" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            <!-- 흑돌 베이스 입체 구체 -->
+                            <Ellipse Width="150" Height="150">
+                                <Ellipse.Fill>
+                                    <RadialGradientBrush Center="0.32,0.32" GradientOrigin="0.32,0.32" RadiusX="0.75" RadiusY="0.75">
+                                        <GradientStop Color="#4B5563" Offset="0" />
+                                        <GradientStop Color="#1E293B" Offset="0.35" />
+                                        <GradientStop Color="#090D16" Offset="0.8" />
+                                        <GradientStop Color="#000000" Offset="1" />
+                                    </RadialGradientBrush>
+                                </Ellipse.Fill>
+                                <Ellipse.Stroke>
+                                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                        <GradientStop Color="#FDE68A" Offset="0" />
+                                        <GradientStop Color="#B45309" Offset="1" />
+                                    </LinearGradientBrush>
+                                </Ellipse.Stroke>
+                            </Ellipse>
+                            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                                <TextBlock Text="⚫" FontSize="44" HorizontalAlignment="Center" Foreground="#F59E0B" />
+                                <TextBlock Text="흑 (선공)" FontSize="18" FontWeight="Black" Foreground="#FDE68A" HorizontalAlignment="Center" Margin="0,2,0,0" />
+                                <TextBlock Text="F I R S T   M O V E" FontSize="9" FontWeight="Bold" Foreground="#D97706" HorizontalAlignment="Center" />
+                            </StackPanel>
                             <!-- 반사 하이라이트 -->
-                            <Path Data="M 20,40 A 70,70 0 0,1 124,40 A 60,30 0 0,0 20,40"
-                                  Fill="#40FFFFFF" HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,18,0,0" />
+                            <Path Data="M 24,42 A 70,70 0 0,1 126,42 A 60,26 0 0,0 24,42"
+                                  Fill="#30FFFFFF" HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,16,0,0" />
                         </Grid>
 
-                        <!-- 코인 후면 (상대 아바타 및 심볼) -->
+                        <!-- 코인 후면: ⚪ 백 (후공) -->
                         <Grid x:Name="BackFace" Visibility="Collapsed">
-                            <Ellipse Width="144" Height="144"
-                                     Fill="{Binding OpponentAvatar, Converter={StaticResource AvatarToBrush}}" />
-                            <TextBlock Text="{Binding OpponentAvatar, Converter={StaticResource AvatarToSymbol}}"
-                                       FontSize="68" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            <!-- 백돌 베이스 입체 구체 -->
+                            <Ellipse Width="150" Height="150">
+                                <Ellipse.Fill>
+                                    <RadialGradientBrush Center="0.32,0.32" GradientOrigin="0.32,0.32" RadiusX="0.75" RadiusY="0.75">
+                                        <GradientStop Color="#FFFFFF" Offset="0" />
+                                        <GradientStop Color="#F1F5F9" Offset="0.4" />
+                                        <GradientStop Color="#CBD5E1" Offset="0.8" />
+                                        <GradientStop Color="#64748B" Offset="1" />
+                                    </RadialGradientBrush>
+                                </Ellipse.Fill>
+                                <Ellipse.Stroke>
+                                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                        <GradientStop Color="#FFFFFF" Offset="0" />
+                                        <GradientStop Color="#94A3B8" Offset="1" />
+                                    </LinearGradientBrush>
+                                </Ellipse.Stroke>
+                            </Ellipse>
+                            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                                <TextBlock Text="⚪" FontSize="44" HorizontalAlignment="Center" Foreground="#38BDF8" />
+                                <TextBlock Text="백 (후공)" FontSize="18" FontWeight="Black" Foreground="#0F172A" HorizontalAlignment="Center" Margin="0,2,0,0" />
+                                <TextBlock Text="S E C O N D   M O V E" FontSize="9" FontWeight="Bold" Foreground="#475569" HorizontalAlignment="Center" />
+                            </StackPanel>
                             <!-- 반사 하이라이트 -->
-                            <Path Data="M 20,40 A 70,70 0 0,1 124,40 A 60,30 0 0,0 20,40"
-                                  Fill="#40FFFFFF" HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,18,0,0" />
+                            <Path Data="M 24,42 A 70,70 0 0,1 126,42 A 60,26 0 0,0 24,42"
+                                  Fill="#60FFFFFF" HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,16,0,0" />
                         </Grid>
                     </Grid>
                 </Grid>

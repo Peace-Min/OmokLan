@@ -30,7 +30,28 @@ public sealed class OmokBoardCanvas : Canvas
 
     public static readonly DependencyProperty GameProperty =
         DependencyProperty.Register(nameof(Game), typeof(GameViewModel), typeof(OmokBoardCanvas),
-            new FrameworkPropertyMetadata(null, FrameworkPropertyMetadataOptions.AffectsRender));
+            new FrameworkPropertyMetadata(null, FrameworkPropertyMetadataOptions.AffectsRender, OnGamePropertyChanged));
+
+    private static void OnGamePropertyChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    {
+        if (d is OmokBoardCanvas canvas)
+        {
+            if (e.OldValue is GameViewModel oldVm)
+            {
+                oldVm.BoardInvalidated -= canvas.OnBoardInvalidated;
+            }
+            if (e.NewValue is GameViewModel newVm)
+            {
+                newVm.BoardInvalidated += canvas.OnBoardInvalidated;
+            }
+            canvas.InvalidateVisual();
+        }
+    }
+
+    private void OnBoardInvalidated()
+    {
+        Dispatcher.InvokeAsync(InvalidateVisual);
+    }
 
     public GameViewModel? Game
     {
@@ -94,6 +115,7 @@ public sealed class OmokBoardCanvas : Canvas
                 if (Game.PlaceCommand.CanExecute(cell))
                 {
                     Game.PlaceCommand.Execute(cell);
+                    InvalidateVisual();
                 }
             }
         }
