@@ -6,7 +6,7 @@ namespace OmokLan.Engine.Play;
 
 /// <summary>
 /// CLI 터미널 환경을 위한 오목판 그리드 및 텍스트 렌더링 엔진.
-/// 동아시아 전각/반각 너비를 고려하여 어떤 돌이 놓여도 1픽셀도 밀리지 않는 칼정렬 보장.
+/// Windows 콘솔(cmd/PowerShell/conhost) 폰트 환경에서 어떠한 왜곡도 없이 100% 칼정렬 보장.
 /// </summary>
 public static class CliRenderer
 {
@@ -23,9 +23,6 @@ public static class CliRenderer
         // CJK 표의문자(한자)
         if (c >= 0x4e00 && c <= 0x9fff) return true;
         if (c >= 0x3400 && c <= 0x4dbf) return true;
-
-        // 기하학적 도형 (● 0x25CF, ○ 0x25CB, ■ 0x25A0 등)
-        if (c >= 0x25a0 && c <= 0x25ff) return true;
 
         // CJK 기호 및 전각 문자
         if (c >= 0x3000 && c <= 0x303f) return true;
@@ -50,6 +47,9 @@ public static class CliRenderer
     public static string PadOrTrimDisplay(string s, int targetWidth)
     {
         if (s == null) s = "";
+        // 이모지 등 서로게이트 페어 제거하여 콘솔 정렬 보호
+        s = Regex.Replace(s, @"\p{Cs}", "");
+
         int currentWidth = 0;
         var sb = new StringBuilder();
         foreach (char c in s)
@@ -99,7 +99,11 @@ public static class CliRenderer
         return false;
     }
 
-    /// <summary>오목판 1개 행(Row)을 터미널 텍스트로 빌드합니다. (반드시 정확히 37칸 너비 보장: col 0~36)</summary>
+    /// <summary>
+    /// 오목판 1개 행(Row)을 터미널 텍스트로 빌드합니다.
+    /// 모든 셀을 [기호 1개 + 공백 1개]의 2칸 튜플로 100% 동일하게 구성하여 폰트 차이에 무관하게 정렬을 유지합니다.
+    /// 너비: │ 01 (5칸) + 15셀*2칸(30칸) + 2칸 공백 + │(1칸) = 정확히 38칸.
+    /// </summary>
     public static string FormatBoardRow(int y, Stone[,] grid, (int X, int Y)? lastMove)
     {
         var sb = new StringBuilder();
@@ -110,16 +114,16 @@ public static class CliRenderer
             var st = grid[x, y];
             if (st == Stone.Black)
             {
-                sb.Append("●"); // 전각 2칸
+                sb.Append("● "); // 기호 + 공백 = 2칸
             }
             else if (st == Stone.White)
             {
-                sb.Append("○"); // 전각 2칸
+                sb.Append("○ "); // 기호 + 공백 = 2칸
             }
             else
             {
                 bool isStar = (x == 3 || x == 7 || x == 11) && (y == 3 || y == 7 || y == 11);
-                sb.Append(isStar ? "+ " : "· "); // 2칸
+                sb.Append(isStar ? "+ " : ". "); // 화점(+) 또는 마침표(.) = 2칸
             }
         }
 

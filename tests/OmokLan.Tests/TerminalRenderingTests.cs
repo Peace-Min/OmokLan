@@ -10,12 +10,12 @@ public class TerminalRenderingTests
     [Fact]
     public void DisplayWidth_Of_Stones_Should_Equal_Exactly_Two()
     {
-        // 흑돌 전각 2칸
-        Assert.Equal(2, CliRenderer.GetDisplayWidth("●"));
-        // 백돌 전각 2칸
-        Assert.Equal(2, CliRenderer.GetDisplayWidth("○"));
+        // 흑돌 1칸 + 공백 1칸 = 2칸
+        Assert.Equal(2, CliRenderer.GetDisplayWidth("● "));
+        // 백돌 1칸 + 공백 1칸 = 2칸
+        Assert.Equal(2, CliRenderer.GetDisplayWidth("○ "));
         // 빈자리 1칸 + 공백 1칸 = 2칸
-        Assert.Equal(2, CliRenderer.GetDisplayWidth("· "));
+        Assert.Equal(2, CliRenderer.GetDisplayWidth(". "));
         // 화점 1칸 + 공백 1칸 = 2칸
         Assert.Equal(2, CliRenderer.GetDisplayWidth("+ "));
     }

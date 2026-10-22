@@ -73,8 +73,11 @@ public sealed class TerminalMatchSession : IDisposable
 
         try
         {
-            if (Console.WindowWidth < 105) Console.WindowWidth = 105;
-            if (Console.WindowHeight < 32) Console.WindowHeight = 32;
+            // 버퍼를 충분히 확보(120x35)하여 줄바꿈이나 창 바닥 도달로 인한 강제 스크롤 원천 차단
+            if (Console.BufferWidth < 120) Console.BufferWidth = 120;
+            if (Console.BufferHeight < 35) Console.BufferHeight = 35;
+            if (Console.WindowWidth < 102) Console.WindowWidth = 102;
+            if (Console.WindowHeight < 28) Console.WindowHeight = 28;
         }
         catch
         {
@@ -204,73 +207,79 @@ public sealed class TerminalMatchSession : IDisposable
                 }
                 else
                 {
+                    try
+                    {
+                        if (Console.WindowTop > 0) Console.SetWindowPosition(0, 0);
+                    }
+                    catch { }
                     Console.SetCursorPosition(0, 0);
                 }
 
                 var snap = _match.Snapshot();
 
-                // 1. 상단 터미널 헤더 (총 101칸 너비 칼일치)
+                // 1. 상단 터미널 헤더 (총 98칸 너비 칼일치)
                 Console.ForegroundColor = ConsoleColor.Cyan;
-                Console.WriteLine("┌────────────────────────────────────┬──────────────────────────────────────────────────────────────┐");
+                Console.WriteLine("┌────────────────────────────────────┬───────────────────────────────────────────────────────────┐");
                 Console.Write("│ ");
                 Console.ForegroundColor = ConsoleColor.White;
+
+                string safeNick = _match.OpponentNick.Replace("🤖", "").Trim();
                 string myColorStr = _match.MyColor == Stone.Black ? "● P1 (Master)" : (_match.MyColor == Stone.White ? "○ P2 (Worker)" : "Syncing...");
                 string turnStr = _match.IsMyTurn ? $"★ Local Lock ({snap.TurnSecondsRemaining,2}s)" : $"Peer Lock ({snap.TurnSecondsRemaining,2}s)";
-                string headerInfo = $"[K8S MESH] Peer: {_match.OpponentNick}  |  Tag: {myColorStr}  |  Status: {turnStr}";
-                Console.Write(PadOrTrimDisplay(headerInfo, 97));
+                string headerInfo = $"[K8S MESH] Peer: {safeNick}  |  Tag: {myColorStr}  |  Status: {turnStr}";
+                Console.Write(PadOrTrimDisplay(headerInfo, 94));
                 Console.ForegroundColor = ConsoleColor.Cyan;
                 Console.WriteLine(" │");
-                Console.WriteLine("├────────────────────────────────────┼──────────────────────────────────────────────────────────────┤");
+                Console.WriteLine("├────────────────────────────────────┼───────────────────────────────────────────────────────────┤");
 
-                // 2. 15x15 오목판 매트릭스 렌더링 (좌측 37칸 + 우측 63칸 = 101칸)
+                // 2. 15x15 오목판 매트릭스 렌더링 (좌측 38칸 + 우측 60칸 = 98칸)
                 Console.ForegroundColor = ConsoleColor.DarkGray;
-                Console.Write("│    A B C D E F G H I J K L M N O   │ ");
+                Console.Write("│     A B C D E F G H I J K L M N O  │ ");
                 Console.ForegroundColor = ConsoleColor.DarkGreen;
-                Console.WriteLine(PadOrTrimDisplay("LIVE LOG STREAM & SYSTEM STATUS (RECENT CHAT & PACKETS)", 60) + " │");
+                Console.WriteLine(PadOrTrimDisplay("LIVE LOG STREAM & SYSTEM STATUS (RECENT CHAT & PACKETS)", 57) + " │");
                 Console.ForegroundColor = ConsoleColor.DarkGray;
-                Console.WriteLine("│                                    │                                                              │");
+                Console.WriteLine("│                                    │                                                           │");
 
                 for (int y = 0; y < OmokBoard.Size; y++)
                 {
                     Console.ForegroundColor = ConsoleColor.DarkGray;
-                    Console.Write($"│ {(y + 1),2} ");
+                    Console.Write($"│ {(y + 1),2} "); // 5칸
 
                     for (int x = 0; x < OmokBoard.Size; x++)
                     {
                         var st = snap.Grid[x, y];
                         bool isLast = snap.LastMove.HasValue && snap.LastMove.Value.X == x && snap.LastMove.Value.Y == y;
 
-                        // 🔒 핵심: 콘솔에서 모든 셀은 정확히 2칸 너비(Width 2)로 100% 통일
-                        // ● 와 ○ 는 전각 문자 자체로 2칸이므로 뒤에 공백을 붙이지 않음.
-                        // · 와 + 는 1칸 문자이므로 뒤에 공백 ' '을 붙여 2칸으로 통일.
+                        // 🔒 핵심 해결: 모든 셀을 [문자 1개 + 공백 1개 = 2칸]으로 100% 동일하게 구성!
+                        // 이렇게 하면 어떤 콘솔 폰트에서도 F4든 어디든 너비가 1mm도 밀리지 않고 완벽하게 정렬됨!
                         if (st == Stone.Black)
                         {
                             Console.ForegroundColor = isLast ? ConsoleColor.Yellow : ConsoleColor.Cyan;
-                            Console.Write("●"); // 전각 2칸
+                            Console.Write("● "); // 문자 + 공백
                         }
                         else if (st == Stone.White)
                         {
                             Console.ForegroundColor = isLast ? ConsoleColor.Yellow : ConsoleColor.Red;
-                            Console.Write("○"); // 전각 2칸
+                            Console.Write("○ "); // 문자 + 공백
                         }
                         else
                         {
-                            // 화점
+                            // 화점 및 빈칸 (가운데점 대신 또렷이 보이는 마침표 . 사용)
                             bool isStar = (x == 3 || x == 7 || x == 11) && (y == 3 || y == 7 || y == 11);
                             if (isStar)
                             {
                                 Console.ForegroundColor = ConsoleColor.DarkCyan;
-                                Console.Write("+ "); // 1 + 1 = 2칸
+                                Console.Write("+ ");
                             }
                             else
                             {
                                 Console.ForegroundColor = ConsoleColor.DarkGray;
-                                Console.Write("· "); // 1 + 1 = 2칸
+                                Console.Write(". ");
                             }
                         }
                     }
 
-                    // 우측 대화/로그 스트림 (넉넉한 60칸 너비 제공)
+                    // 우측 대화/로그 스트림 (57칸 너비 제공)
                     Console.ForegroundColor = ConsoleColor.DarkGray;
                     Console.Write("  │ ");
 
@@ -284,13 +293,13 @@ public sealed class TerminalMatchSession : IDisposable
                         else if (logLine.Contains("[RESULT]")) Console.ForegroundColor = ConsoleColor.Green;
                         else Console.ForegroundColor = ConsoleColor.Gray;
 
-                        // 60칸 너비에 맞춰서 출력 (한글 전각 폭 정확 계산)
-                        string formattedLine = PadOrTrimDisplay(logLine, 60);
+                        // 57칸 너비에 맞춰서 출력
+                        string formattedLine = PadOrTrimDisplay(logLine, 57);
                         Console.Write(formattedLine);
                     }
                     else
                     {
-                        Console.Write(new string(' ', 60));
+                        Console.Write(new string(' ', 57));
                     }
 
                     Console.ForegroundColor = ConsoleColor.DarkGray;
@@ -298,7 +307,7 @@ public sealed class TerminalMatchSession : IDisposable
                 }
 
                 Console.ForegroundColor = ConsoleColor.Cyan;
-                Console.WriteLine("└────────────────────────────────────┴──────────────────────────────────────────────────────────────┘");
+                Console.WriteLine("└────────────────────────────────────┴───────────────────────────────────────────────────────────┘");
                 Console.ResetColor();
 
                 // 3. 안내 및 명령어 힌트
