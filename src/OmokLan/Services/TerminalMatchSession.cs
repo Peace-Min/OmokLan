@@ -178,41 +178,9 @@ public sealed class TerminalMatchSession : IDisposable
         }
     }
 
-    /// <summary>한글(전각 2칸) 및 영문(반각 1칸)을 고려한 문자열 화면 표시 너비를 계산합니다.</summary>
-    private static int GetDisplayWidth(string s)
-    {
-        int width = 0;
-        foreach (char c in s)
-        {
-            width += (c >= 0x1100 && (c <= 0x115f || c >= 0x2e80)) || c >= 0xac00 ? 2 : 1;
-        }
-        return width;
-    }
-
-    /// <summary>문자열을 목표 표시 너비(targetWidth)에 맞게 자르거나 공백을 채워 정렬합니다.</summary>
-    private static string PadOrTrimDisplay(string s, int targetWidth)
-    {
-        int currentWidth = 0;
-        var sb = new StringBuilder();
-        foreach (char c in s)
-        {
-            int charWidth = (c >= 0x1100 && (c <= 0x115f || c >= 0x2e80)) || c >= 0xac00 ? 2 : 1;
-            if (currentWidth + charWidth > targetWidth - 2)
-            {
-                sb.Append("..");
-                currentWidth += 2;
-                break;
-            }
-            sb.Append(c);
-            currentWidth += charWidth;
-        }
-
-        if (currentWidth < targetWidth)
-        {
-            sb.Append(new string(' ', targetWidth - currentWidth));
-        }
-        return sb.ToString();
-    }
+    private static int GetDisplayWidth(string s) => CliRenderer.GetDisplayWidth(s);
+    private static string PadOrTrimDisplay(string s, int targetWidth) => CliRenderer.PadOrTrimDisplay(s, targetWidth);
+    public static bool TryParseMove(string input, out int x, out int y) => CliRenderer.TryParseMove(input, out x, out y);
 
     /// <summary>
     /// 화면을 깜빡임 없이 제자리(In-place)에서 부드럽게 갱신합니다.
@@ -241,26 +209,26 @@ public sealed class TerminalMatchSession : IDisposable
 
                 var snap = _match.Snapshot();
 
-                // 1. 상단 터미널 헤더 (총 101칸 너비)
+                // 1. 상단 터미널 헤더 (총 101칸 너비 칼일치)
                 Console.ForegroundColor = ConsoleColor.Cyan;
-                Console.WriteLine("┌─────────────────────────────────────┬─────────────────────────────────────────────────────────────┐");
+                Console.WriteLine("┌────────────────────────────────────┬──────────────────────────────────────────────────────────────┐");
                 Console.Write("│ ");
                 Console.ForegroundColor = ConsoleColor.White;
-                Console.Write($"[K8S MESH] Peer: {_match.OpponentNick,-12}");
-                Console.ForegroundColor = ConsoleColor.Yellow;
                 string myColorStr = _match.MyColor == Stone.Black ? "● P1 (Master)" : (_match.MyColor == Stone.White ? "○ P2 (Worker)" : "Syncing...");
-                Console.Write($" | Tag: {myColorStr,-12}");
-                Console.ForegroundColor = ConsoleColor.Green;
                 string turnStr = _match.IsMyTurn ? $"★ Local Lock ({snap.TurnSecondsRemaining,2}s)" : $"Peer Lock ({snap.TurnSecondsRemaining,2}s)";
-                Console.Write($" | Status: {turnStr,-20}");
+                string headerInfo = $"[K8S MESH] Peer: {_match.OpponentNick}  |  Tag: {myColorStr}  |  Status: {turnStr}";
+                Console.Write(PadOrTrimDisplay(headerInfo, 97));
                 Console.ForegroundColor = ConsoleColor.Cyan;
                 Console.WriteLine(" │");
-                Console.WriteLine("├─────────────────────────────────────┼─────────────────────────────────────────────────────────────┤");
+                Console.WriteLine("├────────────────────────────────────┼──────────────────────────────────────────────────────────────┤");
 
-                // 2. 15x15 오목판 매트릭스 렌더링 (각 열은 정확히 2칸씩!)
+                // 2. 15x15 오목판 매트릭스 렌더링 (좌측 37칸 + 우측 63칸 = 101칸)
                 Console.ForegroundColor = ConsoleColor.DarkGray;
-                Console.WriteLine("│    A B C D E F G H I J K L M N O    │   LIVE LOG STREAM & SYSTEM STATUS (RECENT CHAT & PACKETS)   │");
-                Console.WriteLine("│                                     │                                                             │");
+                Console.Write("│    A B C D E F G H I J K L M N O   │ ");
+                Console.ForegroundColor = ConsoleColor.DarkGreen;
+                Console.WriteLine(PadOrTrimDisplay("LIVE LOG STREAM & SYSTEM STATUS (RECENT CHAT & PACKETS)", 60) + " │");
+                Console.ForegroundColor = ConsoleColor.DarkGray;
+                Console.WriteLine("│                                    │                                                              │");
 
                 for (int y = 0; y < OmokBoard.Size; y++)
                 {
@@ -272,18 +240,18 @@ public sealed class TerminalMatchSession : IDisposable
                         var st = snap.Grid[x, y];
                         bool isLast = snap.LastMove.HasValue && snap.LastMove.Value.X == x && snap.LastMove.Value.Y == y;
 
-                        // 🔒 핵심 수정: 콘솔에서 모든 셀은 정확히 2칸 너비(Width 2)를 유지해야 함!
+                        // 🔒 핵심: 콘솔에서 모든 셀은 정확히 2칸 너비(Width 2)로 100% 통일
                         // ● 와 ○ 는 전각 문자 자체로 2칸이므로 뒤에 공백을 붙이지 않음.
                         // · 와 + 는 1칸 문자이므로 뒤에 공백 ' '을 붙여 2칸으로 통일.
                         if (st == Stone.Black)
                         {
                             Console.ForegroundColor = isLast ? ConsoleColor.Yellow : ConsoleColor.Cyan;
-                            Console.Write("●"); // 2칸
+                            Console.Write("●"); // 전각 2칸
                         }
                         else if (st == Stone.White)
                         {
                             Console.ForegroundColor = isLast ? ConsoleColor.Yellow : ConsoleColor.Red;
-                            Console.Write("○"); // 2칸
+                            Console.Write("○"); // 전각 2칸
                         }
                         else
                         {
@@ -302,7 +270,7 @@ public sealed class TerminalMatchSession : IDisposable
                         }
                     }
 
-                    // 우측 대화/로그 스트림 (넉넉한 59칸 너비 제공)
+                    // 우측 대화/로그 스트림 (넉넉한 60칸 너비 제공)
                     Console.ForegroundColor = ConsoleColor.DarkGray;
                     Console.Write("  │ ");
 
@@ -316,13 +284,13 @@ public sealed class TerminalMatchSession : IDisposable
                         else if (logLine.Contains("[RESULT]")) Console.ForegroundColor = ConsoleColor.Green;
                         else Console.ForegroundColor = ConsoleColor.Gray;
 
-                        // 59칸 너비에 맞춰서 출력 (한글 전각 폭 정확 계산)
-                        string formattedLine = PadOrTrimDisplay(logLine, 59);
+                        // 60칸 너비에 맞춰서 출력 (한글 전각 폭 정확 계산)
+                        string formattedLine = PadOrTrimDisplay(logLine, 60);
                         Console.Write(formattedLine);
                     }
                     else
                     {
-                        Console.Write(new string(' ', 59));
+                        Console.Write(new string(' ', 60));
                     }
 
                     Console.ForegroundColor = ConsoleColor.DarkGray;
@@ -330,7 +298,7 @@ public sealed class TerminalMatchSession : IDisposable
                 }
 
                 Console.ForegroundColor = ConsoleColor.Cyan;
-                Console.WriteLine("└─────────────────────────────────────┴─────────────────────────────────────────────────────────────┘");
+                Console.WriteLine("└────────────────────────────────────┴──────────────────────────────────────────────────────────────┘");
                 Console.ResetColor();
 
                 // 3. 안내 및 명령어 힌트
@@ -523,31 +491,6 @@ public sealed class TerminalMatchSession : IDisposable
 
             // 알 수 없는 명령어
             AddLog("WARN", $"알 수 없는 명령: '{input}'. 예: 'H8', 'chat 안녕', 'boss'");
-        }
-
-        /// <summary>다양한 형식(단순 좌표, 깃 커밋, kubectl 등)에서 바둑판 좌표(X, Y)를 추출합니다.</summary>
-        private static bool TryParseMove(string input, out int x, out int y)
-        {
-            x = -1;
-            y = -1;
-
-            var match = Regex.Match(input, @"([a-oA-O])\s*([0-9]{1,2})", RegexOptions.IgnoreCase);
-            if (!match.Success) return false;
-
-            string colStr = match.Groups[1].Value.ToUpperInvariant();
-            if (!int.TryParse(match.Groups[2].Value, out int rowNum)) return false;
-
-            int colIdx = Array.IndexOf(ColLabels, colStr);
-            int rowIdx = rowNum - 1;
-
-            if (colIdx >= 0 && colIdx < OmokBoard.Size && rowIdx >= 0 && rowIdx < OmokBoard.Size)
-            {
-                x = colIdx;
-                y = rowIdx;
-                return true;
-            }
-
-            return false;
         }
 
         /// <summary>긴급 보스 키: 가짜 MSBuild / Docker 빌드 화면을 띄웁니다.</summary>
